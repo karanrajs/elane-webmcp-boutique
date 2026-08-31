@@ -59,92 +59,6 @@ A separate WebMCP runtime test verified structured catalog search, staging the i
 
 Each tool delegates to a validated handler in [`app/page.tsx`](app/page.tsx). Read-only handlers return structured catalog, state, bag, or promotion data without changing the UI. Mutating handlers update the same React state used by the human interface, wait for the relevant visible transition, and then return a concise result to the agent. [`app/webmcp-contract.ts`](app/webmcp-contract.ts) enforces pagination and output budgets, while [`scripts/verify-webmcp.mjs`](scripts/verify-webmcp.mjs) checks the registered surface for drift.
 
-## Technology
-
-- React 19 and Next.js-compatible App Router APIs
-- Vinext and Vite for a Cloudflare Workers-compatible build
-- TypeScript in strict mode
-- Tailwind CSS 4 for the CSS processing pipeline
-- Native imperative WebMCP
-- OpenAI Sites hosting configuration
-
-Node.js 22.13 or newer is required.
-
-## Local setup
-
-```bash
-git clone https://github.com/karanrajs/elane-clothing-boutique.git
-cd elane-clothing-boutique
-npm ci
-npm run dev
-```
-
-Open the local URL printed by Vinext. No environment variables or external services are required for the current experience.
-
-### Available commands
-
-| Command | Purpose |
-| --- | --- |
-| `npm run dev` | Start the local Vinext development server. |
-| `npm run build` | Produce the production Cloudflare-compatible build. |
-| `npm run start` | Start the built application. |
-
-## Architecture
-
-```text
-app/
-├── page.tsx                         UI, client state, validation, and tool handlers
-├── catalog.ts                      Catalog data, search ranking, slots, and asset mapping
-├── webmcp-contract.ts              Shared pagination and output-budget invariants
-├── components/
-│   └── atelier-webmcp.tsx          WebMCP schemas, registration, and lifecycle
-├── globals.css                     Shared theme and responsive interface styles
-└── layout.tsx                      Metadata and document shell
-
-public/
-├── garment-board-layers/           Individual transparent garment assets
-├── garment-board-sprites/          Catalog-wide garment-board sprite sheets
-└── elane-*.{jpg,png}                Storefront catalog and brand imagery
-```
-
-The browser is the application boundary. Catalog rules live in `catalog.ts`, visible shopping state and validated actions live in `page.tsx`, and `atelier-webmcp.tsx` is the thin WebMCP adapter between an agent and that state. WebMCP remains an enhancement: browsers without `document.modelContext` still receive the complete human-operated storefront.
-
-## WebMCP tool inventory
-
-### Catalog and styling
-
-| Tool | Kind | Purpose |
-| --- | --- | --- |
-| `elane_read_atelier_catalog` | Read | Return one catalog page with IDs, prices, slots, and compatibility rules. |
-| `elane_read_atelier_state` | Read | Return one compact view of the current look, capsule, constraints, or customer product lists. |
-| `elane_search_atelier_catalog` | Read | Return one ranked page for a natural-language name, colour, garment, or style search. |
-| `elane_stage_atelier_look` | Stage | Replace the visible board with one validated women’s or men’s look. |
-| `elane_set_atelier_size` | Configure | Change the displayed size without changing the bag. |
-| `elane_add_staged_item` | Configure | Add one compatible product to an empty slot in the current look. |
-| `elane_remove_staged_item` | Configure | Remove one unlocked product from the current look. |
-| `elane_replace_staged_item` | Configure | Replace one product with another from the same collection and slot. |
-
-### Capsule planning
-
-| Tool | Kind | Purpose |
-| --- | --- | --- |
-| `elane_stage_capsule_journey` | Stage | Batch-stage two to four occasion-specific looks with an optional budget. |
-| `elane_replan_capsule` | Configure | Atomically revise a capsule while preserving locked pieces and applying new constraints. |
-
-### Shopping bag
-
-| Tool | Kind | Purpose |
-| --- | --- | --- |
-| `elane_read_shopping_bag` | Read | Return one page of bag lines plus quantities, sizes, and CAD totals. |
-| `elane_read_promotions` | Read | Return authoritative promotion terms and current-bag eligibility without changing state. |
-| `elane_apply_promotion` | Configure | Apply an eligible promotion code to the visible bag totals after user intent. |
-| `elane_add_catalog_item_to_bag` | Complete | Add one catalog item directly to the bag. |
-| `elane_add_staged_look_to_bag` | Complete | Add every item in the current look or a selected capsule look. |
-| `elane_adjust_bag_item_quantity` | Configure | Increase or decrease one bag line by one unit. |
-| `elane_set_bag_item_size` | Configure | Change the size of one existing bag line. |
-| `elane_remove_bag_items` | Configure | Remove selected product lines. |
-| `elane_clear_shopping_bag` | Configure | Clear the complete bag after an explicit request. |
-
 ## Example agent-assisted shopping sequence
 
 This example shows the agent translating a broad request into working search criteria, then using the WebMCP flow verified against the live site. The shopper remains involved by reviewing the visible result, refining the trouser colour, confirming the size, and explicitly approving the bag change.
@@ -203,6 +117,94 @@ sequenceDiagram
 
     Note over Shopper,Agent: The agent reports the offer but does not apply it without another request
 ```
+
+## WebMCP tool inventory
+
+### Catalog and styling
+
+| Tool | Kind | Purpose |
+| --- | --- | --- |
+| `elane_read_atelier_catalog` | Read | Return one catalog page with IDs, prices, slots, and compatibility rules. |
+| `elane_read_atelier_state` | Read | Return one compact view of the current look, capsule, constraints, or customer product lists. |
+| `elane_search_atelier_catalog` | Read | Return one ranked page for a natural-language name, colour, garment, or style search. |
+| `elane_stage_atelier_look` | Stage | Replace the visible board with one validated women’s or men’s look. |
+| `elane_set_atelier_size` | Configure | Change the displayed size without changing the bag. |
+| `elane_add_staged_item` | Configure | Add one compatible product to an empty slot in the current look. |
+| `elane_remove_staged_item` | Configure | Remove one unlocked product from the current look. |
+| `elane_replace_staged_item` | Configure | Replace one product with another from the same collection and slot. |
+
+### Capsule planning
+
+| Tool | Kind | Purpose |
+| --- | --- | --- |
+| `elane_stage_capsule_journey` | Stage | Batch-stage two to four occasion-specific looks with an optional budget. |
+| `elane_replan_capsule` | Configure | Atomically revise a capsule while preserving locked pieces and applying new constraints. |
+
+### Shopping bag
+
+| Tool | Kind | Purpose |
+| --- | --- | --- |
+| `elane_read_shopping_bag` | Read | Return one page of bag lines plus quantities, sizes, and CAD totals. |
+| `elane_read_promotions` | Read | Return authoritative promotion terms and current-bag eligibility without changing state. |
+| `elane_apply_promotion` | Configure | Apply an eligible promotion code to the visible bag totals after user intent. |
+| `elane_add_catalog_item_to_bag` | Complete | Add one catalog item directly to the bag. |
+| `elane_add_staged_look_to_bag` | Complete | Add every item in the current look or a selected capsule look. |
+| `elane_adjust_bag_item_quantity` | Configure | Increase or decrease one bag line by one unit. |
+| `elane_set_bag_item_size` | Configure | Change the size of one existing bag line. |
+| `elane_remove_bag_items` | Configure | Remove selected product lines. |
+| `elane_clear_shopping_bag` | Configure | Clear the complete bag after an explicit request. |
+
+
+## Technology
+
+- React 19 and Next.js-compatible App Router APIs
+- Vinext and Vite for a Cloudflare Workers-compatible build
+- TypeScript in strict mode
+- Tailwind CSS 4 for the CSS processing pipeline
+- Native imperative WebMCP
+- OpenAI Sites hosting configuration
+
+Node.js 22.13 or newer is required.
+
+## Local setup
+
+```bash
+git clone https://github.com/karanrajs/elane-clothing-boutique.git
+cd elane-clothing-boutique
+npm ci
+npm run dev
+```
+
+Open the local URL printed by Vinext. No environment variables or external services are required for the current experience.
+
+### Available commands
+
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Start the local Vinext development server. |
+| `npm run build` | Produce the production Cloudflare-compatible build. |
+| `npm run start` | Start the built application. |
+
+## Architecture
+
+```text
+app/
+├── page.tsx                         UI, client state, validation, and tool handlers
+├── catalog.ts                      Catalog data, search ranking, slots, and asset mapping
+├── webmcp-contract.ts              Shared pagination and output-budget invariants
+├── components/
+│   └── atelier-webmcp.tsx          WebMCP schemas, registration, and lifecycle
+├── globals.css                     Shared theme and responsive interface styles
+└── layout.tsx                      Metadata and document shell
+
+public/
+├── garment-board-layers/           Individual transparent garment assets
+├── garment-board-sprites/          Catalog-wide garment-board sprite sheets
+└── elane-*.{jpg,png}                Storefront catalog and brand imagery
+```
+
+The browser is the application boundary. Catalog rules live in `catalog.ts`, visible shopping state and validated actions live in `page.tsx`, and `atelier-webmcp.tsx` is the thin WebMCP adapter between an agent and that state. WebMCP remains an enhancement: browsers without `document.modelContext` still receive the complete human-operated storefront.
+
 
 ## State and production boundaries
 
