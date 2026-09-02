@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Live demo](https://img.shields.io/badge/Live_demo-ChatGPT_Sites-7b2d3b.svg)](https://elane-clothing-boutique.karanrajs.chatgpt.site)
 
-ÉLANE is a proof of agent-ready commerce: one clothing boutique designed for people to browse visually and for AI agents to help those people complete a shopping task. A shopper can plan outfits for several occasions while accounting for budget, weather, dress code, colour preferences, and clothes they already own. The same editorial storefront exposes 21 native WebMCP tools for structured catalog discovery, styling, sizing, policy checks, promotion, and shopping-bag actions.
+ÉLANE is a premium clothing boutique where people can browse visually, while an AI agent can help them complete more complex shopping tasks. WebMCP does not replace the website or the shopping experience. It connects the agent to the same catalog, Style Studio, shopping bag, promotions, and store policies that the shopper can see.
 
 **[Open the live application](https://elane-clothing-boutique.karanrajs.chatgpt.site)**
 
@@ -11,53 +11,86 @@
 
 ## WebMCP case study
 
-### User goal
-
-A shopper begins with: “Can you help me to find office attire for this winter with the budget of 1500”. The agent turns that broad intent into a practical winter look within the shopper’s CAD 1,500 budget using the current site context and ÉLANE’s structured catalog data. The shopper can then guide the result with simple follow-up requests: change the trouser colour, set the size, add the approved look to the bag, and check for an eligible discount.
-
 ### Why this is a strong fit for WebMCP
 
-Fashion shopping is a stateful, multi-step task. The agent must translate the shopper’s climate and dress-code context into garment searches, compare structured product attributes, assemble compatible slots, preserve the current look while replacing one item, track the selected size, distinguish staging from a bag mutation, and evaluate a promotion against the resulting subtotal.
+Fashion shopping is rarely a one-step task. A shopper may need an outfit for a specific event, location, season, dress code, colour preference, size, and budget. They may also want to change only one item without losing the rest of the outfit.
 
-A visual storefront remains important for photography, editorial discovery, and the character of the retailer. It is not, however, a dependable data contract for an agent: products, sizes, and offers may be distributed across collection pages, drawers, banners, and bag screens. WebMCP lets ÉLANE expose those existing site capabilities as explicit tools while keeping the human interface intact.
+On a normal storefront, this information is spread across collection pages, product details, filters, promotional banners, policy pages, and the shopping bag. An agent using only screen navigation has to repeatedly read the interface and guess what the current state is.
+
+WebMCP gives ÉLANE a more reliable way to share these capabilities with an agent. The agent can search structured product information, stage a compatible outfit, replace one garment, set the size, read the bag, check promotions, and answer policy questions using tools provided directly by the website.
+
+The visual storefront is still important. The shopper can see every recommendation and decide whether it matches their taste.
 
 ### How WebMCP creates a better user experience
 
-Instead of translating a shopping goal into filters, page navigation, and repeated comparisons, the shopper can describe the outcome they want. The agent uses ÉLANE’s structured catalog and store actions to find matching pieces, compose a visible look, respond to style changes, confirm sizing, and evaluate available offers in the same storefront.
+Instead of working through filters and comparing many products manually, the shopper can simply describe the result they want.
 
-Every step remains visible and bounded. The shopper reviews the recommendation, refines the style, and decides what enters the bag, while the agent handles structured discovery, product matching, and store-specific actions. This reduces navigation and comparison work without removing the retailer’s visual experience or the shopper’s control.
+In the final demo, the shopper begins with:
+
+> “Can you help me find one polished smart-casual outfit for OpenAI DevDay 2026 in San Francisco, within a budget of CAD 1,500, and stage it in the Style Studio?”
+
+The agent searches ÉLANE’s catalog and stages a complete four-piece look in the visible Style Studio. The first look costs CAD 1,150, which is within the shopper’s budget. The shopping bag remains empty because staging an outfit is only a preview.
+
+The shopper then asks:
+
+> “Change the pant to darker colour and set the size to M.”
+
+The agent replaces only the stone trousers with charcoal trousers. It keeps the blazer, polo, and belt unchanged. The updated outfit costs CAD 1,235, the selected size is M, and the bag is still empty.
+
+When the shopper approves the outfit, they make a separate request:
+
+> “Add this approved outfit to my shopping bag and check and apply if there is an eligible promotional offer.”
+
+This request clearly gives permission to add the outfit and apply an eligible offer. The agent adds the four pieces to the bag in size M, checks the promotion terms, and applies ATELIER15. The bag shows a subtotal of CAD 1,235, a discount of CAD 185, and an estimated total of CAD 1,050.
+
+Before continuing, the shopper also asks:
+
+> “Before checkout I want to know the shipping and return policy.”
+
+The agent reads the store’s current policy and explains it without leaving the shopping experience or changing the bag.
 
 ### Initial state and boundaries
 
 - The shopper is viewing ÉLANE, where the page has already registered its WebMCP tools.
-- Catalog, state, bag, and promotion reads return structured information without changing the page.
+- Catalog, state, bag, promotion, and policy reads return structured information without changing the page.
 - Staging and replacing garments update the visible Style Studio but never change the shopping bag.
-- Adding the look requires an explicit shopper request. Reading an eligible promotion does not authorize applying it.
+- Adding the look and applying a promotion require clear shopper permission. In the final demo, the shopper explicitly asks the agent to check and apply an eligible offer.
 - Checkout is demonstrational; the site does not collect payment or place an order.
 
-### What the shopper and agent do together
+### What people and agents can do together
 
-1. The shopper states a broad goal. The agent turns it into working search criteria and begins with read-only store tools.
-2. The agent reads the current Style Studio state and searches the catalog by collection, garment slot, colour, season, and product intent.
-3. The agent stages a proposed look. ÉLANE updates the visible garment board and returns a structured result confirming that the bag did not change.
-4. The shopper asks to change the trousers from brown to charcoal. The agent searches for a compatible charcoal `Bottom` and replaces only that staged item.
-5. The shopper chooses size M. The agent sets or confirms the visible Style Studio size without touching the bag.
-6. The shopper explicitly asks to add the look and check for a discount. The agent adds the staged pieces, verifies the visible bag, and reads promotion eligibility.
-7. The agent explains the eligible offer and estimated savings. Applying the code would require a separate shopper instruction.
+ÉLANE gives the shopper and the agent one shared and visible working state.
 
-This collaboration was difficult to make reliable with screen navigation alone. The shopper contributes intent, taste, corrections, and approval; the agent contributes structured search, constraint tracking, site-specific actions, and calculation. Both work against the same visible page state.
+The shopper provides the personal part of the decision: the occasion, budget, style preference, colour changes, size, and approval. The agent handles structured catalog searches, product compatibility, totals, bag actions, promotion eligibility, and policy information.
+
+1. The shopper asks for one polished smart-casual outfit for OpenAI DevDay 2026 within a CAD 1,500 budget.
+2. The agent reads the current Style Studio state, searches the catalog, and stages a four-piece look costing CAD 1,150. The shopping bag remains empty.
+3. The shopper asks for darker trousers and size M. The agent replaces only the trousers, preserves the other pieces, and updates the total to CAD 1,235 without changing the bag.
+4. The shopper approves the outfit and explicitly asks the agent to add it, check for an eligible offer, and apply it.
+5. The agent adds four size-M items, verifies the bag, and applies ATELIER15. The visible estimated total becomes CAD 1,050 after a CAD 185 discount.
+6. Before checkout, the shopper asks about shipping and returns. The agent reads and explains the current store policy without starting checkout.
+
+This means the shopper can ask for one precise change without starting again. In the demo, changing the trousers does not remove or replace the other approved pieces. The shopper can also see the Style Studio and shopping bag update while the agent is working.
+
+This is difficult to make reliable through screen navigation alone. An agent would otherwise need to infer product information, selected items, sizes, prices, and bag state from different parts of the interface. WebMCP provides structured results, so both the shopper and the agent can understand what was selected, what changed, and what still needs approval.
+
+ÉLANE also includes optional capsule-planning tools for shoppers who need coordinated outfits for several occasions. However, the main demo stays focused on the simpler and more common journey of building one outfit.
 
 ### What was verified
 
-In the shopper-observed interaction, the agent translated the broad office-attire request into a starting recommendation and used ÉLANE’s site tools to present it in the visible Style Studio.
+The final demo shows ChatGPT recognizing 21 tools directly from the website. It shows structured catalog search, the initial four-piece look, a trouser-only replacement, size M, four approved bag items, ATELIER15 application, and a policy read before checkout. The visible results confirm the CAD 1,235 subtotal, CAD 185 discount, CAD 1,050 estimated total, and the `bagChange: none` boundary while styling.
 
-A separate WebMCP runtime test verified structured catalog search, staging the initial look, replacing only the trousers, confirming size M, adding the approved look to the bag, reading the bag, and evaluating promotion eligibility. It also confirmed the visible Style Studio and bag updates, the `bagChange: none` boundary during staging, and the final CAD totals.
+The demo ends before checkout. No payment is collected and no order is placed.
 
 ### How WebMCP is implemented
 
-ÉLANE registers 21 imperative, page-scoped storefront tools from [`app/components/atelier-webmcp.tsx`](app/components/atelier-webmcp.tsx). The Delivery & Returns route also mounts the relevant `read_policy` and `check_return_window` tools through [`app/components/policy-webmcp.tsx`](app/components/policy-webmcp.tsx). Both components feature-detect `document.modelContext`, register closed input schemas and side-effect annotations, and use an `AbortController` for lifecycle cleanup. There is no remote WebMCP server in this architecture.
+ÉLANE registers 21 native, imperative storefront tools from [`app/components/atelier-webmcp.tsx`](app/components/atelier-webmcp.tsx). In the final demo, ChatGPT recognizes seven read tools and fourteen write tools directly from the website. The Delivery & Returns route also mounts the relevant `read_policy` and `check_return_window` tools through [`app/components/policy-webmcp.tsx`](app/components/policy-webmcp.tsx).
 
-Each tool delegates to a validated handler in [`app/page.tsx`](app/page.tsx). Read-only handlers return structured catalog, state, bag, promotion, or policy data without changing the UI. Mutating handlers update the same React state used by the human interface, wait for the relevant visible transition, and then return a concise result to the agent. [`app/policies.ts`](app/policies.ts) is the shared authority for the visible legal pages and date-aware return checks. [`app/webmcp-contract.ts`](app/webmcp-contract.ts) enforces pagination and output budgets, while [`scripts/verify-webmcp.mjs`](scripts/verify-webmcp.mjs) checks the registered surface for drift.
+Both components feature-detect `document.modelContext`, register closed input schemas and side-effect annotations, and use an `AbortController` for lifecycle cleanup. There is no remote WebMCP server in this architecture.
+
+Each tool calls a validated handler in [`app/page.tsx`](app/page.tsx). Read-only handlers return structured catalog, state, bag, promotion, or policy information without changing the UI. Mutating handlers update the same React state used by the human interface, wait for the related visible transition, and then return a concise result. This helps the agent’s response match what the shopper can see.
+
+[`app/policies.ts`](app/policies.ts) is the shared authority for the visible legal pages and date-aware return checks. [`app/webmcp-contract.ts`](app/webmcp-contract.ts) enforces pagination and output budgets, while [`scripts/verify-webmcp.mjs`](scripts/verify-webmcp.mjs) checks the registered surface for drift.
 
 ### Search-first, proof-complete catalog discovery
 
@@ -123,6 +156,10 @@ The browser is the application boundary. Catalog rules live in `catalog.ts`, vis
 
 ## WebMCP tool inventory
 
+![ÉLANE WebMCP tool inventory showing seven read tools, seven write tools, and seven sensitive write tools](public/elane-webmcp-tool-inventory.png)
+
+*The 21 storefront tools are grouped by how they affect the shopping experience. Sensitive write tools change promotion or shopping-bag state and require clear shopper intent.*
+
 Tool identifiers use concise, verb-first `snake_case` and stay within WebMCP’s portable name character set. Registrations omit the optional `title`, allowing ChatGPT to show the identifier as the heading, derive Read or Write from `readOnlyHint`, and place the tool description beneath it.
 
 ### Catalog and styling
@@ -165,13 +202,14 @@ The core WebMCP journey works with one staged look and does not depend on capsul
 
 ## Example agent-assisted shopping sequence
 
-This is the three-prompt use case for the demo video. It shows the agent translating an occasion and budget into a staged look, making one precise revision, and completing only the bag and promotion actions the shopper explicitly approves.
+This is the four-prompt journey shown in the final demo video. It shows the agent turning an occasion and budget into a staged look, making one precise revision, completing the bag and promotion actions the shopper approves, and reading store policy before checkout.
 
 1. **Prompt 1:** “Can you help me find one polished smart-casual outfit for OpenAI DevDay 2026 in San Francisco, within a budget of CAD 1,500, and stage it in the Style Studio?”
-2. **Prompt 2:** “Change the pant to light colour and set the size to M.”
+2. **Prompt 2:** “Change the pant to darker colour and set the size to M.”
 3. **Prompt 3:** “Add this approved outfit to my shopping bag and check and apply if there is an eligible promotional offer.”
+4. **Prompt 4:** “Before checkout I want to know the shipping and return policy.”
 
-Prompt 1 authorizes research and Style Studio staging, not a bag change. Prompt 2 authorizes the trouser replacement and Style Studio size change. Prompt 3 authorizes adding the approved outfit, checking the current bag against authoritative offer terms, and applying an eligible offer; it does not authorize checkout, payment, or order placement.
+Prompt 1 authorizes research and Style Studio staging, not a bag change. Prompt 2 authorizes the trouser replacement and Style Studio size change. Prompt 3 authorizes adding the approved outfit, checking the current bag against authoritative offer terms, and applying an eligible offer. Prompt 4 is read-only and does not authorize checkout, payment, or order placement.
 
 ```mermaid
 sequenceDiagram
@@ -192,41 +230,48 @@ sequenceDiagram
         Site-->>Agent: status ready and ranked product IDs
     end
 
-    Agent->>Site: stage_look(top 51, bottom 69, layer 54, accessory 86)
+    Agent->>Site: stage_look(top 55, bottom 64, layer 54, accessory 79)
     Site->>UI: Show the selected pieces in Style Studio
     UI-->>Site: Garment board rendered
     Site-->>Agent: status composed, preview visible, bagChange none
-    Agent-->>Shopper: The CAD 1,195 DevDay look is visible and within budget
+    Agent-->>Shopper: The CAD 1,150 DevDay look is visible and the bag is empty
 
-    Shopper->>Agent: Change the pant to light colour and set the size to M
-    Agent->>Site: search_catalog(query light-colour trousers, model man, slot Bottom)
-    Site-->>Agent: Single-Pleat Chino in Stone, product 64, CAD 225
-    Agent->>Site: replace_look_item(product 69, replacement 64)
+    Shopper->>Agent: Change the pant to darker colour and set the size to M
+    Agent->>Site: search_catalog(query darker trousers, model man, slot Bottom)
+    Site-->>Agent: Flannel Tailored Trouser in Charcoal, product 69, CAD 310
+    Agent->>Site: replace_look_item(product 64, replacement 69)
     Site->>UI: Replace only the staged trousers
     UI-->>Site: Revised garment board rendered
-    Site-->>Agent: status replaced, bottom 64, bagChange none
+    Site-->>Agent: status replaced, bottom 69, bagChange none
     Agent->>Site: set_look_size(size M)
     Site->>UI: Show size M in Style Studio
     UI-->>Site: Selected size rendered
     Site-->>Agent: status unchanged or updated, size M, bagChange none
-    Agent-->>Shopper: The light-trouser look is visible in size M at CAD 1,110 and the bag is unchanged
+    Agent-->>Shopper: The darker-trouser look is visible in size M at CAD 1,235 and the bag is unchanged
 
     Shopper->>Agent: Add this approved outfit to my shopping bag and check and apply if there is an eligible promotional offer
     Agent->>Site: add_look_to_bag(size M)
     Site->>UI: Add the approved pieces and open the bag
     UI-->>Site: Bag rendered with four size-M lines
-    Site-->>Agent: status added, bag visible, subtotal CAD 1,110
+    Site-->>Agent: status added, bag visible, subtotal CAD 1,235
     Agent->>Site: read_bag(offset 0, limit 6)
-    Site-->>Agent: Four lines, size M, subtotal CAD 1,110
+    Site-->>Agent: Four lines, size M, subtotal CAD 1,235
     Agent->>Site: read_promotions()
-    Site-->>Agent: ATELIER15 eligible, savings CAD 167, applied false
+    Site-->>Agent: ATELIER15 eligible, savings CAD 185, applied false
     Agent->>Site: apply_promotion(code ATELIER15)
     Site->>UI: Apply the eligible offer to the visible bag totals
-    UI-->>Site: Discount CAD 167 and estimated total CAD 943 rendered
+    UI-->>Site: Discount CAD 185 and estimated total CAD 1,050 rendered
     Site-->>Agent: ATELIER15 applied, checkout not started
-    Agent-->>Shopper: The approved outfit is in the bag and the eligible offer is applied; estimated total CAD 943
+    Agent-->>Shopper: The approved outfit is in the bag and the eligible offer is applied with an estimated total of CAD 1,050
 
-    Note over Shopper,Agent: The workflow ends in the bag; no checkout, payment, or order placement
+    Shopper->>Agent: Before checkout I want to know the shipping and return policy
+    Agent->>Site: read_policy(section delivery)
+    Site-->>Agent: Current shipping terms
+    Agent->>Site: read_policy(section returns)
+    Site-->>Agent: Current return and refund terms
+    Agent-->>Shopper: Explain the policy without changing the bag or starting checkout
+
+    Note over Shopper,Agent: The workflow ends in the bag with no checkout, payment, or order placement
 ```
 
 ## State and production boundaries
