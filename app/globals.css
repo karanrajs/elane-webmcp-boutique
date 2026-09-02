@@ -28,7 +28,7 @@ img { display: block; max-width: 100%; }
 ::selection { background: rgba(133,25,35,.16); }
 button:focus-visible, input:focus-visible { outline: 1px solid var(--oxblood); outline-offset: 4px; }
 a:focus-visible { outline: 0; box-shadow: 0 2px 0 var(--oxblood); }
-.menu-button:focus-visible, .bag-button:focus-visible, .reset-look:focus-visible { outline: 0; box-shadow: 0 2px 0 var(--oxblood); }
+.menu-button:focus-visible, .bag-button:focus-visible, .reset-look:focus-visible, .agent-preview-actions button:focus-visible { outline: 0; box-shadow: 0 2px 0 var(--oxblood); }
 
 .announcement { min-height: 34px; display: grid; place-items: center; background: var(--paper); color: var(--muted); text-align: center; padding: 8px 16px; border-bottom: 1px solid var(--line); font-size: 11px; letter-spacing: .08em; }
 .site-header { height: 84px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 0 clamp(30px, 3.2vw, 56px); border-bottom: 1px solid var(--line); background: rgba(255,254,250,.985); position: sticky; top: 0; z-index: 20; }
@@ -265,6 +265,31 @@ a:focus-visible { outline: 0; box-shadow: 0 2px 0 var(--oxblood); }
 .constraint-summary > div { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 9px; align-items: baseline; }
 .constraint-summary span { color: var(--muted); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
 .constraint-summary strong { font-size: 11px; font-weight: 500; line-height: 1.45; }
+.agent-activity-card { display: grid; grid-template-columns: minmax(230px, .72fr) minmax(0, 1.28fr); gap: 28px; margin-top: 12px; padding: 20px 24px; border: 1px solid #cfc3b4; background: #f5f0e8; animation: preview-reveal var(--motion-base) var(--ease-out) both; }
+.agent-activity-heading > span { color: var(--oxblood); font-size: 10px; letter-spacing: .13em; text-transform: uppercase; }
+.agent-activity-heading h4 { margin: 6px 0 7px; font-family: var(--display); font-size: 22px; font-weight: 400; line-height: 1.15; }
+.agent-activity-heading p { max-width: 420px; margin: 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.agent-activity-list { display: grid; align-content: start; gap: 0; margin: 0; padding: 0; list-style: none; }
+.agent-activity-item { display: grid; grid-template-columns: 54px minmax(0, 1fr) auto; gap: 5px 10px; align-items: center; padding: 11px 0; border-bottom: 1px solid #ddd3c6; }
+.agent-activity-item:first-child { padding-top: 0; }
+.agent-activity-item:last-child { padding-bottom: 0; border-bottom: 0; }
+.agent-activity-kind { display: inline-grid; min-height: 22px; place-items: center; border: 1px solid currentColor; font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+.agent-activity-kind.is-read { color: #355c68; background: #eaf1f2; }
+.agent-activity-kind.is-write { color: var(--oxblood); background: #f5e6e6; }
+.agent-activity-item code { min-width: 0; overflow: hidden; color: var(--ink); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.agent-activity-item strong { color: var(--sage); font-size: 10px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; }
+.agent-activity-item.is-running strong { color: var(--oxblood); }
+.agent-activity-item.is-failed strong { color: var(--oxblood-dark); }
+.agent-activity-item small { grid-column: 2 / -1; color: var(--muted); font-size: 10px; line-height: 1.45; }
+.agent-preview-card { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(270px, .85fr); gap: 28px; align-items: center; margin-top: 12px; padding: 22px 24px; background: var(--ink); color: #fff; }
+.agent-preview-card > div:first-child > span { color: #c9c3bb; font-size: 10px; letter-spacing: .13em; text-transform: uppercase; }
+.agent-preview-card h4 { margin: 7px 0 8px; font-family: var(--display); font-size: 24px; font-weight: 400; line-height: 1.1; }
+.agent-preview-card p { max-width: 590px; margin: 0; color: #d4cec7; font-size: 11px; line-height: 1.55; }
+.agent-preview-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+.agent-preview-actions button { min-height: 42px; border: 1px solid #817a72; background: transparent; padding: 9px 11px; color: #fff; cursor: pointer; font-size: 11px; line-height: 1.25; }
+.agent-preview-actions button:hover, .agent-preview-actions button:focus-visible { border-color: #fff; }
+.agent-preview-actions button:disabled { border-color: #4e4944; color: #7f7972; cursor: not-allowed; }
+.agent-preview-actions small { grid-column: 1 / -1; min-height: 14px; color: #aaa39c; font-size: 10px; line-height: 1.4; }
 .revision-diff { margin-top: 12px; border: 1px solid var(--line); background: #faf8f5; animation: preview-reveal .24s ease both; }
 .revision-heading { display: grid; grid-template-columns: minmax(220px, .75fr) minmax(0, 1.25fr); gap: 28px; align-items: end; padding: 19px 20px; border-bottom: 1px solid var(--line); }
 .revision-heading span, .revision-groups > div > span, .revision-metrics span { color: var(--oxblood); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
@@ -584,6 +609,13 @@ footer a:hover { color: #fff; }
   .ledger-piece-actions button { min-height: 40px; padding: 10px 0 7px; font-size: 12px; }
   .journey-detail-grid:not(.single-look-detail-grid) .ledger-piece-actions { justify-content: flex-start; }
   .piece-action-row { justify-content: flex-start; }
+  .agent-activity-card { grid-template-columns: 1fr; gap: 17px; padding: 19px 18px; }
+  .agent-activity-item { grid-template-columns: 52px minmax(0, 1fr); }
+  .agent-activity-item strong { grid-column: 2; }
+  .agent-activity-item small { grid-column: 2; }
+  .agent-preview-card { grid-template-columns: 1fr; gap: 18px; padding: 21px 18px; }
+  .agent-preview-actions { grid-template-columns: 1fr; }
+  .agent-preview-actions small { grid-column: auto; }
   .revision-heading { grid-template-columns: 1fr; gap: 10px; }
   .revision-metrics, .revision-groups { grid-template-columns: 1fr; }
   .revision-metrics > div, .revision-groups > div { border-right: 0; border-bottom: 1px solid var(--line); }

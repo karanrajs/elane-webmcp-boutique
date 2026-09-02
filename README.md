@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Live demo](https://img.shields.io/badge/Live_demo-ChatGPT_Sites-7b2d3b.svg)](https://elane-clothing-boutique.karanrajs.chatgpt.site)
 
-ÉLANE is a premium clothing boutique where people can browse visually, while an AI agent can help them complete more complex shopping tasks. WebMCP does not replace the website or the shopping experience. It connects the agent to the same catalog, Style Studio, shopping bag, promotions, and store policies that the shopper can see.
+ÉLANE is a premium clothing boutique where people can browse visually, while an AI agent can help them complete more complex shopping tasks. WebMCP does not replace the website or the shopping experience. It connects the agent to the same catalog, Style Studio, agent-ready garment references, shopping bag, promotions, and store policies that the shopper can see.
 
 **[Open the live application](https://elane-clothing-boutique.karanrajs.chatgpt.site)**
 
@@ -13,13 +13,13 @@
 
 ### Why this is a strong fit for WebMCP
 
-Fashion shopping is rarely a one-step task. A shopper may need an outfit for a specific event, location, season, dress code, colour preference, size, and budget. They may also want to change only one item without losing the rest of the outfit.
+One main reason ÉLANE is a strong fit for WebMCP is the personal outfit preview. The website knows the exact clothes staged in the Style Studio. The customer’s own image-generating agent can use a photo already shared in the conversation. WebMCP connects these two parts, so the agent does not need to guess the clothes from a screenshot and the customer does not need to upload their photo to ÉLANE.
 
-On a normal storefront, this information is spread across collection pages, product details, filters, promotional banners, policy pages, and the shopping bag. An agent using only screen navigation has to repeatedly read the interface and guess what the current state is.
+The idea is simple: **bring your own agent**. First, the customer builds a look on the website or asks the agent to stage one. Then they can ask any compatible image-generating agent to preview that exact outfit. The read-only `read_look_render_kit` tool gives the agent one garment image for every staged item, along with the collection, selected size, layer information, and a short generation instruction.
 
-WebMCP gives ÉLANE a more reliable way to share these capabilities with an agent. The agent can search structured product information, stage a compatible outfit, replace one garment, set the size, read the bag, check promotions, and answer policy questions using tools provided directly by the website.
+The customer’s photo stays only in the agent conversation. ÉLANE does not receive or store it. The agent uses the photo and garment references to create a personal outfit concept. This helps the customer imagine the complete look before buying, but it is not a promise of exact fit, size, material, or appearance.
 
-The visual storefront is still important. The shopper can see every recommendation and decide whether it matches their taste.
+This is why WebMCP is useful for ÉLANE. The agent works with the same live Style Studio information the customer can see instead of trying to understand the page from screenshots. After viewing the personal preview, the customer can continue with the same agent to change the look, check the bag, find an eligible offer, or approve a shopping action. The customer stays in control of their photo, style choices, and shopping decisions while the agent handles the structured work.
 
 ### How WebMCP creates a better user experience
 
@@ -29,31 +29,26 @@ In the final demo, the shopper begins with:
 
 > “Can you help me find one polished smart-casual outfit for OpenAI DevDay 2026 in San Francisco, within a budget of CAD 1,500, and stage it in the Style Studio?”
 
-The agent searches ÉLANE’s catalog and stages a complete four-piece look in the visible Style Studio. The first look costs CAD 1,150, which is within the shopper’s budget. The shopping bag remains empty because staging an outfit is only a preview.
+The agent reads the current shopping state and stages a complete four-piece men’s look in size M: an Ink Unstructured Wool Blazer, Ivory Relaxed Poplin Shirt, Stone Single-Pleat Chino, and Espresso Woven Leather Belt. The look costs CAD 1,100, which is within the shopper’s budget. The shopping bag remains empty because staging an outfit is only a preview.
 
-The shopper then asks:
+The shopper attaches a clear full-body photo to the agent conversation and uses the personal-preview prompt copied from the Style Studio:
 
-> “Change the pant to darker colour and set the size to M.”
+> “On the ÉLANE Style Studio page I already have open, create a complete preview of my currently staged outfit on me. If I have not already attached a clear full-body photo in this conversation, ask me to attach one first. Generate the finished image here. Treat it as a visual concept, not proof of fit or sizing.”
 
-The agent replaces only the stone trousers with charcoal trousers. It keeps the blazer, polo, and belt unchanged. The updated outfit costs CAD 1,235, the selected size is M, and the bag is still empty.
+The agent calls `read_look_render_kit` to receive the exact staged garment images, displayed size, layer slots, and a bounded generation brief. A compatible image-generating agent then creates the personal outfit concept inside the conversation. The website never receives the customer photo, and the shopping bag is still empty.
 
-When the shopper approves the outfit, they make a separate request:
+After reviewing the concept, the shopper makes a separate request:
 
-> “Add this approved outfit to my shopping bag and check and apply if there is an eligible promotional offer.”
+> “Add outfit to my shopping bag and check and apply if there is an eligible promotional offer.”
 
-This request clearly gives permission to add the outfit and apply an eligible offer. The agent adds the four pieces to the bag in size M, checks the promotion terms, and applies ATELIER15. The bag shows a subtotal of CAD 1,235, a discount of CAD 185, and an estimated total of CAD 1,050.
-
-Before continuing, the shopper also asks:
-
-> “Before checkout I want to know the shipping and return policy.”
-
-The agent reads the store’s current policy and explains it without leaving the shopping experience or changing the bag.
+This request clearly gives permission to add the outfit and apply an eligible offer. The agent rechecks the staged look and bag, adds the four pieces in size M, evaluates the promotion terms, applies ATELIER15, and verifies the updated bag. The visible result is a CAD 1,100 subtotal, a CAD 165 discount, and a CAD 935 estimated total. The demo stops before checkout, payment, or order placement.
 
 ### Initial state and boundaries
 
-- The shopper is viewing ÉLANE, where the page has already registered its WebMCP tools.
+- The shopper is viewing ÉLANE in ChatGPT’s in-app browser. The page has registered 22 WebMCP tools, the Style Studio is set to the men’s collection and size M, and the bag is empty.
 - Catalog, state, bag, promotion, and policy reads return structured information without changing the page.
-- Staging and replacing garments update the visible Style Studio but never change the shopping bag.
+- Staging or refining garments updates the visible Style Studio but never changes the shopping bag.
+- `read_look_render_kit` returns garment references only. It does not receive the customer photo or generate an image; the photo and generated concept stay in the agent conversation.
 - Adding the look and applying a promotion require clear shopper permission. In the final demo, the shopper explicitly asks the agent to check and apply an eligible offer.
 - Checkout is demonstrational; the site does not collect payment or place an order.
 
@@ -61,36 +56,48 @@ The agent reads the store’s current policy and explains it without leaving the
 
 ÉLANE gives the shopper and the agent one shared and visible working state.
 
-The shopper provides the personal part of the decision: the occasion, budget, style preference, colour changes, size, and approval. The agent handles structured catalog searches, product compatibility, totals, bag actions, promotion eligibility, and policy information.
+The shopper provides the personal part of the decision: the occasion, budget, style preference, photo, and approval. The website provides structured catalog data, current state, exact garment references, safe write actions, promotion rules, and policy information. The agent connects those capabilities, keeps the shopper informed, and creates the personal concept outside the website.
 
 1. The shopper asks for one polished smart-casual outfit for OpenAI DevDay 2026 within a CAD 1,500 budget.
-2. The agent reads the current Style Studio state, searches the catalog, and stages a four-piece look costing CAD 1,150. The shopping bag remains empty.
-3. The shopper asks for darker trousers and size M. The agent replaces only the trousers, preserves the other pieces, and updates the total to CAD 1,235 without changing the bag.
-4. The shopper approves the outfit and explicitly asks the agent to add it, check for an eligible offer, and apply it.
-5. The agent adds four size-M items, verifies the bag, and applies ATELIER15. The visible estimated total becomes CAD 1,050 after a CAD 185 discount.
-6. Before checkout, the shopper asks about shipping and returns. The agent reads and explains the current store policy without starting checkout.
+2. The agent reads the current Style Studio and bag state, uses the live catalog, and stages a four-piece look costing CAD 1,100. The shopping bag remains empty.
+3. The shopper attaches a full-body photo to the agent conversation and asks for a preview of the staged outfit.
+4. The website’s read-only render-kit tool returns the four exact garment images and generation guidance. The agent combines those references with the attached photo and returns a personal concept preview without sending the photo to ÉLANE.
+5. The shopper explicitly asks the agent to add the outfit, check for an eligible offer, and apply it.
+6. The agent adds four size-M items, verifies the bag, and applies ATELIER15. The visible estimated total becomes CAD 935 after a CAD 165 discount.
 
-This means the shopper can ask for one precise change without starting again. In the demo, changing the trousers does not remove or replace the other approved pieces. The shopper can also see the Style Studio and shopping bag update while the agent is working.
+The result is one continuous flow from discovery to a personal visual concept and then to controlled shopping. The shopper sees the same Style Studio and shopping bag state the agent is using, while sensitive content stays in the conversation where it was supplied.
 
-This is difficult to make reliable through screen navigation alone. An agent would otherwise need to infer product information, selected items, sizes, prices, and bag state from different parts of the interface. WebMCP provides structured results, so both the shopper and the agent can understand what was selected, what changed, and what still needs approval.
+This is difficult to make reliable through screen navigation alone. An agent would otherwise need to infer product information, selected items, sizes, image references, prices, and bag state from different parts of the interface. WebMCP provides structured results, so both the shopper and the agent can understand what was selected, what was visualized, what changed, and what still needs approval.
 
 ÉLANE also includes optional capsule-planning tools for shoppers who need coordinated outfits for several occasions. However, the main demo stays focused on the simpler and more common journey of building one outfit.
 
+### Agent Try-On: bring your own agent
+
+After staging a look, the shopper can ask any compatible image-generating agent to call `read_look_render_kit`. The read-only tool returns one stable, public PNG reference for every staged garment plus the collection, displayed size, layer slot, and a concise generation instruction. The agent can render the outfit on an editorial model or use a customer photo supplied directly in that agent conversation.
+
+ÉLANE never receives or stores the customer photo in this flow. The generated image is a visual concept rather than evidence of exact fit, sizing, proportions, texture, or drape. The visible Style Studio includes copyable prompts for both preview modes and clearly communicates these boundaries.
+
 ### What was verified
 
-The final demo shows ChatGPT recognizing 21 tools directly from the website. It shows structured catalog search, the initial four-piece look, a trouser-only replacement, size M, four approved bag items, ATELIER15 application, and a policy read before checkout. The visible results confirm the CAD 1,235 subtotal, CAD 185 discount, CAD 1,050 estimated total, and the `bagChange: none` boundary while styling.
+The verified storefront registers 22 tools directly from the website: eight read tools and fourteen write tools. The final 2:44 demo was recorded in ChatGPT desktop’s WebMCP-capable in-app browser and visibly demonstrates shared state, `read_look_render_kit`, the personal concept preview, explicit bag mutation, promotion application, and the complete tool inventory. Contract checks cover structured catalog search, state and asset reads, staging boundaries, shopping-bag actions, promotions, policy reads, output budgets, and one generated preview asset for every catalog product.
 
 The demo ends before checkout. No payment is collected and no order is placed.
 
 ### How WebMCP is implemented
 
-ÉLANE registers 21 native, imperative storefront tools from [`app/components/atelier-webmcp.tsx`](app/components/atelier-webmcp.tsx). In the final demo, ChatGPT recognizes seven read tools and fourteen write tools directly from the website. The Delivery & Returns route also mounts the relevant `read_policy` and `check_return_window` tools through [`app/components/policy-webmcp.tsx`](app/components/policy-webmcp.tsx).
+ÉLANE registers 22 native, imperative storefront tools from [`app/components/atelier-webmcp.tsx`](app/components/atelier-webmcp.tsx): eight read tools and fourteen write tools. The Delivery & Returns route also mounts the relevant `read_policy` and `check_return_window` tools through [`app/components/policy-webmcp.tsx`](app/components/policy-webmcp.tsx).
 
 Both components feature-detect `document.modelContext`, register closed input schemas and side-effect annotations, and use an `AbortController` for lifecycle cleanup. There is no remote WebMCP server in this architecture.
 
 Each tool calls a validated handler in [`app/page.tsx`](app/page.tsx). Read-only handlers return structured catalog, state, bag, promotion, or policy information without changing the UI. Mutating handlers update the same React state used by the human interface, wait for the related visible transition, and then return a concise result. This helps the agent’s response match what the shopper can see.
 
-[`app/policies.ts`](app/policies.ts) is the shared authority for the visible legal pages and date-aware return checks. [`app/webmcp-contract.ts`](app/webmcp-contract.ts) enforces pagination and output budgets, while [`scripts/verify-webmcp.mjs`](scripts/verify-webmcp.mjs) checks the registered surface for drift.
+The storefront keeps its Agent activity section hidden during ordinary browsing. The first WebMCP invocation reveals a page-session-only history containing the tool identifier, Read or Write classification, and lifecycle status. Tool inputs, outputs, errors, and personal content are not displayed or persisted in that history.
+
+[`app/policies.ts`](app/policies.ts) is the shared authority for the visible legal pages and date-aware return checks. [`app/webmcp-contract.ts`](app/webmcp-contract.ts) enforces pagination and output budgets, while [`scripts/verify-webmcp.mjs`](scripts/verify-webmcp.mjs) checks the registered surface and Agent Try-On assets for drift. [`scripts/generate-agent-preview-assets.mjs`](scripts/generate-agent-preview-assets.mjs) deterministically exports the catalog sprite crops as one transparent PNG per product.
+
+### How Codex was used
+
+Codex helped build and refine the storefront, add the native WebMCP contracts, test the visible human-agent workflow, audit safety boundaries, and keep the implementation, demo, and documentation aligned. The important product decisions remained human-directed: use shared visible state, keep preview separate from shopping, keep customer photos out of ÉLANE, and require explicit intent before bag or promotion changes.
 
 ### Search-first, proof-complete catalog discovery
 
@@ -98,7 +105,7 @@ Each tool calls a validated handler in [`app/page.tsx`](app/page.tsx). Read-only
 
 When exhaustive coverage is genuinely required, the same `read_catalog` tool accepts `view: products` and returns denser eight-product pages. Each page includes `totalCount` and `nextOffset`, so an agent can prove that it reached the end without receiving a silently truncated result. Ranked search remains capped at six richer results per page. Both paths stay below ÉLANE’s 1,300-character safety target and 1,500-character hard response limit.
 
-This two-lane contract is the distinctive implementation choice: **ranked search for shopper speed, deterministic pagination for completeness**. It preserves the existing 21-tool surface, avoids a decorative overview tool, reduces a full 88-product read from 15 calls to 11, and keeps every catalog response bounded enough for dependable agent reasoning.
+This two-lane contract is the distinctive implementation choice: **ranked search for shopper speed, deterministic pagination for completeness**. It preserves the 22-tool surface, avoids a decorative overview tool, reduces a full 88-product read from 15 calls to 11, and keeps every catalog response bounded enough for dependable agent reasoning.
 
 ## Technology
 
@@ -107,26 +114,44 @@ This two-lane contract is the distinctive implementation choice: **ranked search
 - TypeScript in strict mode
 - Tailwind CSS 4 for the CSS processing pipeline
 - Native imperative WebMCP
-- OpenAI Sites hosting configuration
+- A portable application build with no OpenAI Sites configuration required
 
 Node.js 22.13 or newer is required.
 
 ## Local setup
 
 ```bash
-git clone https://github.com/karanrajs/elane-clothing-boutique.git
-cd elane-clothing-boutique
+git clone https://github.com/karanrajs/elane-webmcp-boutique.git
+cd elane-webmcp-boutique
 npm ci
 npm run dev
 ```
 
 Open the local URL printed by Vinext. No environment variables or external services are required for the current experience.
 
+### Deployment portability
+
+The public repository is not tied to one hosting account. A fresh clone can run and build without `.openai/hosting.json`, an OpenAI Sites project ID, environment variables, or external services. The original Sites configuration stays local and is ignored by Git, so it is not included in public commits.
+
+`npm run build` produces the current Cloudflare Workers-compatible output. Other hosting services can use the same application source, but may need their own Vinext or Vite deployment adapter and platform configuration.
+
+### Judge testing
+
+- **Hosted app:** open the [live application](https://elane-clothing-boutique.karanrajs.chatgpt.site) in ChatGPT desktop’s in-app browser. No login or credentials are required.
+- **Google Chrome:** use Chrome 149 or later, enable `chrome://flags/#enable-webmcp-testing`, restart Chrome, and open the live application.
+- **WebMCP flow:** use the three prompts in the [final demo sequence](#final-demo-sequence). Confirm that staging leaves the bag empty, `read_look_render_kit` is read-only, the four items are added only after the final prompt, and the flow ends at CAD 935 without checkout.
+- **Repository validation:** after `npm ci`, run `npm run check` to execute type checking, linting, WebMCP contract verification, asset verification, and a production build.
+
 ### Available commands
 
 | Command | Purpose |
 | --- | --- |
 | `npm run dev` | Start the local Vinext development server. |
+| `npm run generate:agent-preview-assets` | Rebuild the per-product PNG references used by Agent Try-On. |
+| `npm run typecheck` | Check the strict TypeScript build without emitting files. |
+| `npm run lint` | Run the repository lint rules. |
+| `npm run verify:webmcp` | Verify the 22-tool inventory, schemas, annotations, lifecycle, output budgets, README parity, and preview assets. |
+| `npm run check` | Run type checking, linting, WebMCP verification, and the production build. |
 | `npm run build` | Produce the production Cloudflare-compatible build. |
 | `npm run start` | Start the built application. |
 
@@ -147,6 +172,7 @@ app/
 └── layout.tsx                      Metadata and document shell
 
 public/
+├── agent-preview-assets/           Stable transparent garment PNGs for external agents
 ├── garment-board-layers/           Individual transparent garment assets
 ├── garment-board-sprites/          Catalog-wide garment-board sprite sheets
 └── elane-*.{jpg,png}                Storefront catalog and brand imagery
@@ -156,9 +182,7 @@ The browser is the application boundary. Catalog rules live in `catalog.ts`, vis
 
 ## WebMCP tool inventory
 
-![ÉLANE WebMCP tool inventory showing seven read tools, seven write tools, and seven sensitive write tools](public/elane-webmcp-tool-inventory.png)
-
-*The 21 storefront tools are grouped by how they affect the shopping experience. Sensitive write tools change promotion or shopping-bag state and require clear shopper intent.*
+The 22 storefront tools are grouped by how they affect the shopping experience. Sensitive write tools change promotion or shopping-bag state and require clear shopper intent; `read_look_render_kit` is read-only and does not receive customer photos or generate images itself.
 
 Tool identifiers use concise, verb-first `snake_case` and stay within WebMCP’s portable name character set. Registrations omit the optional `title`, allowing ChatGPT to show the identifier as the heading, derive Read or Write from `readOnlyHint`, and place the tool description beneath it.
 
@@ -168,6 +192,7 @@ Tool identifiers use concise, verb-first `snake_case` and stay within WebMCP’s
 | --- | --- | --- |
 | `read_catalog` | Read | Return a compact overview by default or dense, proof-complete product pages for exhaustive reads. |
 | `read_style_state` | Read | Return one compact view of the current look, capsule, constraints, or customer product lists. |
+| `read_look_render_kit` | Read | Return the active staged outfit as agent-ready garment images and a bounded preview brief. |
 | `search_catalog` | Read | Return one ranked page for a natural-language name, colour, garment, or style search. |
 | `stage_look` | Stage | Replace the visible board with one validated women’s or men’s look. |
 | `set_look_size` | Configure | Change the displayed size without changing the bag. |
@@ -200,85 +225,77 @@ The core WebMCP journey works with one staged look and does not depend on capsul
 | `remove_bag_items` | Configure | Remove selected product lines. |
 | `clear_bag` | Configure | Clear the complete bag after an explicit request. |
 
-## Example agent-assisted shopping sequence
+## Final demo sequence
 
-This is the four-prompt journey shown in the final demo video. It shows the agent turning an occasion and budget into a staged look, making one precise revision, completing the bag and promotion actions the shopper approves, and reading store policy before checkout.
+The final 2:44 demo shows one three-prompt journey: build a look, create a personal concept preview, and complete only the shopping actions the shopper explicitly approves.
 
 1. **Prompt 1:** “Can you help me find one polished smart-casual outfit for OpenAI DevDay 2026 in San Francisco, within a budget of CAD 1,500, and stage it in the Style Studio?”
-2. **Prompt 2:** “Change the pant to darker colour and set the size to M.”
-3. **Prompt 3:** “Add this approved outfit to my shopping bag and check and apply if there is an eligible promotional offer.”
-4. **Prompt 4:** “Before checkout I want to know the shipping and return policy.”
+2. **Prompt 2:** “On the ÉLANE Style Studio page I already have open, create a complete preview of my currently staged outfit on me. If I have not already attached a clear full-body photo in this conversation, ask me to attach one first. Generate the finished image here. Treat it as a visual concept, not proof of fit or sizing.”
+3. **Prompt 3:** “Add outfit to my shopping bag and check and apply if there is an eligible promotional offer.”
 
-Prompt 1 authorizes research and Style Studio staging, not a bag change. Prompt 2 authorizes the trouser replacement and Style Studio size change. Prompt 3 authorizes adding the approved outfit, checking the current bag against authoritative offer terms, and applying an eligible offer. Prompt 4 is read-only and does not authorize checkout, payment, or order placement.
+Prompt 1 authorizes catalog and Style Studio work, not a bag change. Prompt 2 authorizes a concept image inside the agent conversation; the ÉLANE website receives no customer photo and its render-kit tool remains read-only. Prompt 3 authorizes adding the staged look, checking the current bag against authoritative offer terms, and applying an eligible offer. Nothing authorizes checkout, payment, or order placement.
 
 ```mermaid
 sequenceDiagram
     actor Shopper
-    participant Agent as AI shopping agent
-    participant Site as ÉLANE site
+    participant Agent as ChatGPT agent
+    participant Site as ÉLANE WebMCP tools
     participant UI as ÉLANE site UI
+    participant Image as Image generation
 
-    Note over Site,UI: The page has registered its WebMCP tools
+    Note over Site,UI: The page has registered 22 WebMCP tools
+    Note over Shopper,UI: Initial state is the men's collection, size M, and an empty bag
     Shopper->>Agent: Find one polished smart-casual outfit for OpenAI DevDay 2026 in San Francisco, within CAD 1,500, and stage it in the Style Studio
-    Note over Agent: Translate the occasion, city, dress code, and CAD 1,500 budget into search criteria
-
+    Agent->>Site: read_bag()
+    Site-->>Agent: Empty bag
     Agent->>Site: read_style_state(view summary)
-    Site-->>Agent: Current model, size, presentation, and staged IDs
-
-    loop Search Top, Bottom, Layer, and Accessory
-        Agent->>Site: search_catalog(query polished smart-casual DevDay San Francisco, model man, slot)
-        Site-->>Agent: status ready and ranked product IDs
-    end
-
+    Site-->>Agent: Men's collection, size M, and no staged look
+    Note over Agent,Site: Select compatible product IDs from the live catalog data
     Agent->>Site: stage_look(top 55, bottom 64, layer 54, accessory 79)
-    Site->>UI: Show the selected pieces in Style Studio
-    UI-->>Site: Garment board rendered
-    Site-->>Agent: status composed, preview visible, bagChange none
-    Agent-->>Shopper: The CAD 1,150 DevDay look is visible and the bag is empty
+    Site->>UI: Render four staged pieces in Style Studio
+    Site-->>Agent: CAD 1,100 look visible and bagChange none
+    Agent-->>Shopper: The size-M look is staged and the bag remains empty
 
-    Shopper->>Agent: Change the pant to darker colour and set the size to M
-    Agent->>Site: search_catalog(query darker trousers, model man, slot Bottom)
-    Site-->>Agent: Flannel Tailored Trouser in Charcoal, product 69, CAD 310
-    Agent->>Site: replace_look_item(product 64, replacement 69)
-    Site->>UI: Replace only the staged trousers
-    UI-->>Site: Revised garment board rendered
-    Site-->>Agent: status replaced, bottom 69, bagChange none
-    Agent->>Site: set_look_size(size M)
-    Site->>UI: Show size M in Style Studio
-    UI-->>Site: Selected size rendered
-    Site-->>Agent: status unchanged or updated, size M, bagChange none
-    Agent-->>Shopper: The darker-trouser look is visible in size M at CAD 1,235 and the bag is unchanged
+    Shopper->>Agent: Attach a full-body photo and request a personal concept preview
+    Agent->>Site: read_style_state(view look)
+    Site-->>Agent: Exact staged IDs and displayed size
+    Agent->>Site: read_look_render_kit(subjectMode customer_photo)
+    Site-->>Agent: Four garment PNGs, layer slots, and bounded generation brief
+    Note over Site,Agent: The customer photo is never sent to ÉLANE
+    Agent->>Image: Combine the attached photo with the exact garment references
+    Image-->>Agent: Personal outfit concept
+    Agent-->>Shopper: Show concept preview with fit and sizing disclaimer
+    Note over Shopper,UI: Preview is read-only and the bag remains empty
 
-    Shopper->>Agent: Add this approved outfit to my shopping bag and check and apply if there is an eligible promotional offer
+    Shopper->>Agent: Add outfit to my shopping bag and check and apply if there is an eligible promotional offer
+    Agent->>Site: read_style_state(view look)
+    Site-->>Agent: Confirm the current staged look
+    Agent->>Site: read_bag()
+    Site-->>Agent: Confirm the bag is empty
     Agent->>Site: add_look_to_bag(size M)
-    Site->>UI: Add the approved pieces and open the bag
-    UI-->>Site: Bag rendered with four size-M lines
-    Site-->>Agent: status added, bag visible, subtotal CAD 1,235
-    Agent->>Site: read_bag(offset 0, limit 6)
-    Site-->>Agent: Four lines, size M, subtotal CAD 1,235
+    Site->>UI: Add four size-M items and open the bag
+    Site-->>Agent: Four lines with subtotal CAD 1,100
     Agent->>Site: read_promotions()
-    Site-->>Agent: ATELIER15 eligible, savings CAD 185, applied false
+    Site-->>Agent: ATELIER15 eligible, savings CAD 165, applied false
     Agent->>Site: apply_promotion(code ATELIER15)
     Site->>UI: Apply the eligible offer to the visible bag totals
-    UI-->>Site: Discount CAD 185 and estimated total CAD 1,050 rendered
+    UI-->>Site: Discount CAD 165 and estimated total CAD 935 rendered
     Site-->>Agent: ATELIER15 applied, checkout not started
-    Agent-->>Shopper: The approved outfit is in the bag and the eligible offer is applied with an estimated total of CAD 1,050
-
-    Shopper->>Agent: Before checkout I want to know the shipping and return policy
-    Agent->>Site: read_policy(section delivery)
-    Site-->>Agent: Current shipping terms
-    Agent->>Site: read_policy(section returns)
-    Site-->>Agent: Current return and refund terms
-    Agent-->>Shopper: Explain the policy without changing the bag or starting checkout
+    Agent->>Site: read_bag()
+    Site-->>Agent: Verify four lines, size M, and estimated total CAD 935
+    Agent-->>Shopper: Confirm the bag and promotion result
 
     Note over Shopper,Agent: The workflow ends in the bag with no checkout, payment, or order placement
 ```
+
+[Open the static PNG version of the sequence diagram](public/elane-webmcp-sequence-diagram.png).
 
 ## State and production boundaries
 
 - The staged look or capsule, active look, locks, owned and excluded pieces, size, and bag are saved in versioned `localStorage` and restored after refresh on the same browser and device. There is no account or cross-device sync.
 - Checkout is a demonstration; there is no payment processor, account system, database, or order submission.
 - Product styling uses a garment-only editorial board, not body or fit simulation.
+- Personal preview generation happens in a compatible external agent. ÉLANE provides garment references but does not receive the customer photo, generate the preview, or claim exact fit.
 
 ## License
 

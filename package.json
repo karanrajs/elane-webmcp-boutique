@@ -7,10 +7,10 @@
   "homepage": "https://elane-clothing-boutique.karanrajs.chatgpt.site",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/karanrajs/elane-clothing-boutique.git"
+    "url": "git+https://github.com/karanrajs/elane-webmcp-boutique.git"
   },
   "bugs": {
-    "url": "https://github.com/karanrajs/elane-clothing-boutique/issues"
+    "url": "https://github.com/karanrajs/elane-webmcp-boutique/issues"
   },
   "engines": {
     "node": ">=22.13.0"
@@ -19,6 +19,7 @@
     "dev": "vinext dev",
     "build": "vinext build",
     "start": "vinext start",
+    "generate:agent-preview-assets": "node --experimental-strip-types scripts/generate-agent-preview-assets.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "verify:webmcp": "node --experimental-strip-types scripts/verify-webmcp.mjs",
@@ -32,7 +33,6 @@
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.54.2",
     "@cloudflare/workers-types": "5.20260828.1",
-    "@openai/sites-vite-plugin": "^0.1.0 || ^0.2.0",
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",
     "@types/react": "19.2.14",
@@ -42,6 +42,7 @@
     "eslint": "9.39.4",
     "eslint-config-next": "16.3.3",
     "react-server-dom-webpack": "19.2.8",
+    "sharp": "0.35.2",
     "tailwindcss": "4.2.1",
     "typescript": "5.9.3",
     "vinext": "1.0.0-beta.8",

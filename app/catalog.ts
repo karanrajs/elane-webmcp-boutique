@@ -352,6 +352,10 @@ if (productById.size !== products.length) {
   throw new Error('Every ÉLANE catalog product must have a unique ID.');
 }
 
+export function agentPreviewAssetPath(productId: number) {
+  return `/agent-preview-assets/${productId}.png`;
+}
+
 export function slotForProduct(product: Product): StyleSlot {
   if (product.category === 'Dresses') return 'Dress';
   if (product.category === 'Trousers' || product.category === 'Skirts' || product.category === 'Denim') return 'Bottom';

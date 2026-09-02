@@ -83,6 +83,13 @@ export type ReplanCapsuleInput = {
   looks: CapsuleJourneyLookInput[];
 };
 
+export type WebMcpToolActivity = {
+  invocationId: number;
+  name: string;
+  phase: 'running' | 'completed' | 'failed';
+  readOnly: boolean;
+};
+
 export type AddStagedLookInput = {
   lookIndex?: number;
   size?: 'XS' | 'S' | 'M' | 'L' | 'XL';
@@ -241,8 +248,10 @@ function pageLimitSchema(maximum: number) {
 }
 
 type AtelierWebMCPProps = {
+  onToolActivity: (activity: WebMcpToolActivity) => void;
   read: (input: unknown) => unknown | Promise<unknown>;
   readState: (input: unknown) => unknown | Promise<unknown>;
+  readRenderKit: (input: unknown) => unknown | Promise<unknown>;
   search: (input: unknown) => unknown | Promise<unknown>;
   stage: (input: unknown) => Promise<AtelierToolResult>;
   stageJourney: (input: unknown) => Promise<unknown>;
@@ -265,8 +274,10 @@ type AtelierWebMCPProps = {
 };
 
 export function AtelierWebMCP({
+  onToolActivity,
   read,
   readState,
+  readRenderKit,
   search,
   stage,
   stageJourney,
@@ -287,8 +298,11 @@ export function AtelierWebMCP({
   removeStagedItem,
   replaceStagedItem,
 }: AtelierWebMCPProps) {
+  const onToolActivityRef = useRef(onToolActivity);
+  const activitySequenceRef = useRef(0);
   const readRef = useRef(read);
   const readStateRef = useRef(readState);
+  const readRenderKitRef = useRef(readRenderKit);
   const searchRef = useRef(search);
   const stageRef = useRef(stage);
   const stageJourneyRef = useRef(stageJourney);
@@ -310,8 +324,10 @@ export function AtelierWebMCP({
   const replaceStagedItemRef = useRef(replaceStagedItem);
 
   useEffect(() => {
+    onToolActivityRef.current = onToolActivity;
     readRef.current = read;
     readStateRef.current = readState;
+    readRenderKitRef.current = readRenderKit;
     searchRef.current = search;
     stageRef.current = stage;
     stageJourneyRef.current = stageJourney;
@@ -331,7 +347,7 @@ export function AtelierWebMCP({
     addStagedItemRef.current = addStagedItem;
     removeStagedItemRef.current = removeStagedItem;
     replaceStagedItemRef.current = replaceStagedItem;
-  }, [addCatalogItemToBag, addStagedItem, addStagedLook, adjustBagItemQuantity, applyPromotion, checkReturnWindow, clearBag, read, readBag, readPolicy, readPromotions, readState, removeBagItems, removeStagedItem, replaceStagedItem, replanCapsule, search, setAtelierSize, setBagItemSize, stage, stageJourney]);
+  }, [addCatalogItemToBag, addStagedItem, addStagedLook, adjustBagItemQuantity, applyPromotion, checkReturnWindow, clearBag, onToolActivity, read, readBag, readPolicy, readPromotions, readRenderKit, readState, removeBagItems, removeStagedItem, replaceStagedItem, replanCapsule, search, setAtelierSize, setBagItemSize, stage, stageJourney]);
 
   useEffect(() => {
     const context = (document as WebMcpDocument).modelContext;
@@ -343,10 +359,21 @@ export function AtelierWebMCP({
     };
     const register = (tool: Parameters<WebMcpModelContext['registerTool']>[0]) => {
       const execute = tool.execute;
+      const readOnly = tool.annotations?.readOnlyHint === true;
       const budgetedTool = {
         ...tool,
         async execute(input: unknown) {
-          return enforceWebMcpOutputBudget(tool.name, await execute(input));
+          const invocationId = activitySequenceRef.current + 1;
+          activitySequenceRef.current = invocationId;
+          onToolActivityRef.current({ invocationId, name: tool.name, phase: 'running', readOnly });
+          try {
+            const result = enforceWebMcpOutputBudget(tool.name, await execute(input));
+            onToolActivityRef.current({ invocationId, name: tool.name, phase: 'completed', readOnly });
+            return result;
+          } catch (error) {
+            onToolActivityRef.current({ invocationId, name: tool.name, phase: 'failed', readOnly });
+            throw error;
+          }
         },
       };
       void Promise.resolve(context.registerTool(budgetedTool, { signal: lifecycle.signal })).catch(reportError);
@@ -403,6 +430,33 @@ export function AtelierWebMCP({
         annotations: { readOnlyHint: true, untrustedContentHint: true },
         execute(input) {
           return readStateRef.current(input);
+        },
+      });
+
+      register({
+        name: 'read_look_render_kit',
+        description: 'Read the currently staged outfit as a compact render kit with one public garment image per piece. Use it to create a visual outfit preview on an editorial model or on a customer photo already supplied directly to the agent. This does not upload a photo, generate an image, change the page, or make fit and sizing claims.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            subjectMode: {
+              type: 'string',
+              enum: ['editorial_model', 'customer_photo'],
+              default: 'editorial_model',
+              description: 'Use a generated model or a customer photo already present in the agent conversation.',
+            },
+            lookIndex: {
+              type: 'integer',
+              minimum: 0,
+              maximum: 3,
+              description: 'Optional zero-based capsule look. Omit it to use the active look.',
+            },
+          },
+          additionalProperties: false,
+        },
+        annotations: { readOnlyHint: true, untrustedContentHint: false },
+        execute(input) {
+          return readRenderKitRef.current(input);
         },
       });
 

@@ -16,8 +16,10 @@ import {
   type ReplanCapsuleInput,
   type ReplaceStagedItemInput,
   type SetBagItemSizeInput,
+  type WebMcpToolActivity,
 } from './components/atelier-webmcp';
 import {
+  agentPreviewAssetPath,
   defaultSelectionsByModel,
   normalizeProductSearchTerms,
   productById,
@@ -43,6 +45,7 @@ import {
   checkReturnWindowFromWebMcp,
   readPolicyFromWebMcp,
 } from './policies';
+import { agentPreviewPrompt, type AgentPreviewSubjectMode } from './agent-preview';
 
 type CartItem = Product & { quantity: number; size: string };
 type AudienceFilter = 'All' | Product['audience'];
@@ -64,6 +67,25 @@ const categoryOrder = new Map<string, number>(categoryOrderList.map((item, index
 
 function currency(value: number) {
   return new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD', maximumFractionDigits: 0 }).format(value);
+}
+
+function agentActivityMessage(activity: WebMcpToolActivity) {
+  if (activity.name === 'read_look_render_kit') {
+    if (activity.phase === 'running') return 'Preparing the staged garment references for your agent.';
+    if (activity.phase === 'completed') return 'The staged garment references were shared. Your shopping bag was not changed.';
+    return 'The garment references could not be prepared. No successful preview handoff was recorded.';
+  }
+  if (activity.phase === 'running') {
+    return activity.readOnly
+      ? 'Reading storefront information without changing your shopping state.'
+      : 'Applying the requested change to the visible storefront.';
+  }
+  if (activity.phase === 'completed') {
+    return activity.readOnly
+      ? 'The storefront information was read without changing your shopping state.'
+      : 'Completed. The visible storefront reflects the requested change.';
+  }
+  return 'The tool could not complete. No successful action was recorded.';
 }
 
 function productHref(product: Product) {
@@ -1878,6 +1900,8 @@ export function Boutique({ initialProductId }: { initialProductId?: number } = {
   const [capsuleRevision, setCapsuleRevision] = useState<CapsuleRevision | null>(null);
   const [sessionReady, setSessionReady] = useState(false);
   const [appliedPromotionCode, setAppliedPromotionCode] = useState<string>();
+  const [agentPreviewCopyStatus, setAgentPreviewCopyStatus] = useState<AgentPreviewSubjectMode | 'error' | null>(null);
+  const [agentToolActivity, setAgentToolActivity] = useState<WebMcpToolActivity[]>([]);
   const activeProduct = initialProductId ? productById.get(initialProductId) : undefined;
   const relatedProducts = useMemo(() => {
     if (!activeProduct) return [];
@@ -2355,6 +2379,59 @@ export function Boutique({ initialProductId }: { initialProductId?: number } = {
       })), offset, limit),
     };
   }, [activeJourneyIndex, capsuleConstraints, excludedProductIds, isCapsuleJourney, journey, lockedProductIds, model, ownedProductIds, selections, size, styleCollection]);
+
+  const readLookRenderKitFromWebMCP = useCallback((rawInput: unknown) => {
+    if (rawInput !== undefined && (
+      !rawInput || typeof rawInput !== 'object' || Array.isArray(rawInput)
+    )) {
+      throw new Error('Expected an optional render-kit query object.');
+    }
+    const input = (rawInput ?? {}) as Record<string, unknown>;
+    const allowedKeys = new Set(['subjectMode', 'lookIndex']);
+    const unknownKey = Object.keys(input).find((key) => !allowedKeys.has(key));
+    if (unknownKey) throw new Error(`Unknown render-kit field: ${unknownKey}.`);
+    const subjectMode = input.subjectMode ?? 'editorial_model';
+    if (subjectMode !== 'editorial_model' && subjectMode !== 'customer_photo') {
+      throw new Error('subjectMode must be either "editorial_model" or "customer_photo".');
+    }
+    const lookIndex = input.lookIndex ?? (isCapsuleJourney ? activeJourneyIndex : 0);
+    if (!Number.isInteger(lookIndex) || (lookIndex as number) < 0) {
+      throw new Error('lookIndex must be a non-negative integer.');
+    }
+    if (!isCapsuleJourney && lookIndex !== 0) {
+      throw new Error('A single look is active; use lookIndex 0.');
+    }
+    const capsuleLook = isCapsuleJourney ? journey.looks[lookIndex as number] : undefined;
+    if (isCapsuleJourney && !capsuleLook) {
+      throw new Error(`lookIndex must be between 0 and ${journey.looks.length - 1}.`);
+    }
+    const lookSelections = capsuleLook?.selections ?? selections;
+    const pieces = selectedProducts(lookSelections);
+    if (!styleCollection || !pieces.length) {
+      throw new Error('Stage at least one Style Studio piece before requesting a render kit.');
+    }
+    const origin = window.location.origin;
+
+    return {
+      status: 'ready',
+      subjectMode,
+      model,
+      size,
+      lookIndex,
+      pieces: pieces.map((product) => ({
+        productId: product.id,
+        slot: slotForProduct(product),
+        imageUrl: new URL(agentPreviewAssetPath(product.id), origin).href,
+      })),
+      customerPhoto: subjectMode === 'customer_photo'
+        ? 'Use only a photo from the agent chat; ÉLANE did not receive or store it.'
+        : null,
+      instruction: subjectMode === 'customer_photo'
+        ? 'Preview the full outfit on the supplied person; preserve identity and garment colours.'
+        : 'Create a full-outfit editorial preview on a generated model suited to this collection.',
+      limitation: 'Concept only; not evidence of fit, sizing, proportions, texture, or drape.',
+    };
+  }, [activeJourneyIndex, isCapsuleJourney, journey, model, selections, size, styleCollection]);
 
   const searchAtelierFromWebMCP = useCallback((rawInput: unknown) => {
     if (!rawInput || typeof rawInput !== 'object' || Array.isArray(rawInput)) {
@@ -3301,6 +3378,21 @@ export function Boutique({ initialProductId }: { initialProductId?: number } = {
   ), [activeSlotProducts, deferredAtelierSearch]);
   const currentLookName = lookName(selections);
   const currentGarmentsBrief = selectedGarmentsBrief(lookProducts, lookTotal);
+  const hasRunningAgentTool = agentToolActivity.some((activity) => activity.phase === 'running');
+  const recordWebMcpToolActivity = useCallback((activity: WebMcpToolActivity) => {
+    setAgentToolActivity((current) => {
+      const withoutInvocation = current.filter((entry) => entry.invocationId !== activity.invocationId);
+      return [activity, ...withoutInvocation].slice(0, 3);
+    });
+  }, []);
+  const copyAgentPreviewPrompt = useCallback(async (subjectMode: AgentPreviewSubjectMode) => {
+    try {
+      await navigator.clipboard.writeText(agentPreviewPrompt(subjectMode));
+      setAgentPreviewCopyStatus(subjectMode);
+    } catch {
+      setAgentPreviewCopyStatus('error');
+    }
+  }, []);
   const selectionBlockedByLock = (product: Product) => {
     if (!isCapsuleJourney || product.audience !== activeAudience) return false;
     const slot = slotForProduct(product);
@@ -3318,6 +3410,7 @@ export function Boutique({ initialProductId }: { initialProductId?: number } = {
   return (
     <main className={activeProduct ? 'product-route' : undefined}>
       {!activeProduct ? <AtelierWebMCP
+        onToolActivity={recordWebMcpToolActivity}
         addCatalogItemToBag={addCatalogItemToBagFromWebMCP}
         addStagedItem={addStagedItemFromWebMCP}
         addStagedLook={addStagedLookFromWebMCP}
@@ -3329,6 +3422,7 @@ export function Boutique({ initialProductId }: { initialProductId?: number } = {
         readPolicy={readPolicyFromWebMcp}
         readPromotions={readPromotionsFromWebMCP}
         checkReturnWindow={checkReturnWindowFromWebMcp}
+        readRenderKit={readLookRenderKitFromWebMCP}
         readState={readAtelierStateFromWebMCP}
         removeBagItems={removeBagItemsFromWebMCP}
         removeStagedItem={removeStagedItemFromWebMCP}
@@ -3583,6 +3677,61 @@ export function Boutique({ initialProductId }: { initialProductId?: number } = {
                 </aside>
               ) : null}
             </div>
+
+            {agentToolActivity.length ? (
+              <section className="agent-activity-card" aria-labelledby="agent-activity-title">
+                <div className="agent-activity-heading">
+                  <span>Agent activity · WebMCP</span>
+                  <h4 id="agent-activity-title">{hasRunningAgentTool
+                    ? 'Your agent is working with ÉLANE.'
+                    : 'Your agent recently used ÉLANE.'}</h4>
+                  <p>This session shows tool names and status only. Inputs and personal content are never displayed here.</p>
+                </div>
+                <ol className="agent-activity-list" aria-live="polite">
+                  {agentToolActivity.map((activity) => (
+                    <li key={activity.invocationId} className={`agent-activity-item is-${activity.phase}`}>
+                      <span className={`agent-activity-kind ${activity.readOnly ? 'is-read' : 'is-write'}`}>
+                        {activity.readOnly ? 'Read' : 'Write'}
+                      </span>
+                      <code>{activity.name}</code>
+                      <strong>{activity.phase === 'running'
+                        ? 'In progress'
+                        : activity.phase === 'completed' ? 'Completed' : 'Could not complete'}</strong>
+                      <small>{agentActivityMessage(activity)}</small>
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            ) : null}
+
+            <section className="agent-preview-card" aria-labelledby="agent-preview-title">
+              <div>
+                <span>Agent Try-On · WebMCP</span>
+                <h4 id="agent-preview-title">Style it here. Preview it with your agent.</h4>
+                <p>ÉLANE shares this look’s garment images with a compatible agent. For a personal preview, your photo stays in your agent conversation and is never uploaded to this site.</p>
+              </div>
+              <div className="agent-preview-actions">
+                <button
+                  type="button"
+                  disabled={!lookProducts.length}
+                  onClick={() => void copyAgentPreviewPrompt('editorial_model')}
+                >Copy model-preview prompt</button>
+                <button
+                  type="button"
+                  disabled={!lookProducts.length}
+                  onClick={() => void copyAgentPreviewPrompt('customer_photo')}
+                >Copy personal-preview prompt</button>
+                <small aria-live="polite">{agentPreviewCopyStatus === 'editorial_model'
+                  ? 'Model-preview prompt copied.'
+                  : agentPreviewCopyStatus === 'customer_photo'
+                    ? 'Personal-preview prompt copied.'
+                    : agentPreviewCopyStatus === 'error'
+                      ? 'Copy was unavailable. Ask your agent to call read_look_render_kit.'
+                      : lookProducts.length
+                        ? 'Requires a WebMCP-compatible agent with image generation.'
+                        : 'Stage at least one piece to enable Agent Try-On.'}</small>
+              </div>
+            </section>
 
             {isCapsuleJourney && capsuleRevision ? (
               <section className="revision-diff" aria-label="What changed and why" aria-live="polite">

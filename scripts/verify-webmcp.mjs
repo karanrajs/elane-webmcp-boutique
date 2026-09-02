@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import ts from 'typescript';
 import {
   WEBMCP_BAG_PAGE_LIMIT,
@@ -13,6 +13,7 @@ import {
   webMcpOutputCharacters,
 } from '../app/webmcp-contract.ts';
 import {
+  agentPreviewAssetPath,
   normalizeProductSearchTerms,
   productSearchScore,
   products,
@@ -20,6 +21,7 @@ import {
   slotForProduct,
 } from '../app/catalog.ts';
 import { atelierPromotion, promotionApplicationState } from '../app/promotions.ts';
+import { agentPreviewPrompt } from '../app/agent-preview.ts';
 import {
   assessReturnEligibility,
   checkReturnWindowFromWebMcp,
@@ -31,6 +33,7 @@ import {
 const expectedTools = [
   'read_catalog',
   'read_style_state',
+  'read_look_render_kit',
   'search_catalog',
   'stage_look',
   'stage_capsule',
@@ -60,6 +63,7 @@ const expectedPolicyPageTools = [
 const readOnlyTools = new Set([
   'read_catalog',
   'read_style_state',
+  'read_look_render_kit',
   'search_catalog',
   'read_bag',
   'read_promotions',
@@ -124,6 +128,7 @@ const compiledAdapter = ts.transpileModule(adapter, {
   },
 }).outputText;
 const storefrontRegistrations = [];
+const storefrontActivity = [];
 const cjsModule = { exports: {} };
 const localRequire = (specifier) => {
   if (specifier === 'react') return immediateReact;
@@ -153,10 +158,15 @@ evaluate(
 );
 
 const handler = async () => ({ status: 'verified' });
+const failingHandler = async () => {
+  throw new Error('Expected verifier failure.');
+};
 cjsModule.exports.AtelierWebMCP({
+  onToolActivity(activity) { storefrontActivity.push(activity); },
   read: handler,
   readState: handler,
-  search: handler,
+  readRenderKit: handler,
+  search: failingHandler,
   stage: handler,
   stageJourney: handler,
   replanCapsule: handler,
@@ -252,12 +262,43 @@ function verifyRegistrations(registrations) {
 verifyRegistrations(storefrontRegistrations);
 verifyRegistrations(policyPageRegistrations);
 
+const renderKitTool = storefrontRegistrations.find(({ tool }) => tool.name === 'read_look_render_kit').tool;
+assert.deepEqual(
+  await renderKitTool.execute({ subjectMode: 'editorial_model' }),
+  { status: 'verified' },
+  'The render-kit tool must still return its validated handler result.',
+);
+assert.deepEqual(storefrontActivity.slice(0, 2), [
+  { invocationId: 1, name: 'read_look_render_kit', phase: 'running', readOnly: true },
+  { invocationId: 1, name: 'read_look_render_kit', phase: 'completed', readOnly: true },
+], 'A successful WebMCP read must report only safe lifecycle metadata.');
+const searchTool = storefrontRegistrations.find(({ tool }) => tool.name === 'search_catalog').tool;
+await assert.rejects(
+  searchTool.execute({ query: 'stone knit' }),
+  /Expected verifier failure/u,
+  'A handler failure must still reject the WebMCP call.',
+);
+assert.deepEqual(storefrontActivity.slice(2), [
+  { invocationId: 2, name: 'search_catalog', phase: 'running', readOnly: true },
+  { invocationId: 2, name: 'search_catalog', phase: 'failed', readOnly: true },
+], 'A failed WebMCP read must report failure without exposing its input or error.');
+
 assert.match(adapter, /new AbortController\(\)/u, 'WebMCP registration must use an AbortController.');
 assert.match(adapter, /return \(\) => lifecycle\.abort\(\)/u, 'WebMCP registrations must be cleaned up on unmount.');
 assert.match(adapter, /enforceWebMcpOutputBudget\(tool\.name/u, 'Every tool output must enforce the shared character limit.');
 assert.match(policyAdapter, /new AbortController\(\)/u, 'Policy WebMCP registration must use an AbortController.');
 assert.match(policyAdapter, /return \(\) => lifecycle\.abort\(\)/u, 'Policy WebMCP registrations must be cleaned up on unmount.');
 assert.match(policyAdapter, /enforceWebMcpOutputBudget\(tool\.name/u, 'Every policy tool output must enforce the shared character limit.');
+assert.match(
+  page,
+  /agentToolActivity\.length \? \(/u,
+  'The customer-facing agent activity section must stay hidden until a WebMCP tool runs.',
+);
+assert.match(
+  page,
+  /Inputs and personal content are never displayed here\./u,
+  'The agent activity section must explain its privacy boundary.',
+);
 const policyReadResult = await policyPageRegistrations.find(({ tool }) => tool.name === 'read_policy')
   .tool.execute({ section: 'delivery' });
 assert.equal(policyReadResult.section, 'delivery', 'The Delivery & Returns policy tool must execute against the shared policy authority.');
@@ -308,6 +349,14 @@ const catalogRows = products.map((product) => ({
   color: product.color,
   priceCad: product.price,
 }));
+await Promise.all(products.map((product) => (
+  access(new URL(`../public${agentPreviewAssetPath(product.id)}`, import.meta.url))
+)));
+assert.equal(
+  new Set(products.map((product) => agentPreviewAssetPath(product.id))).size,
+  products.length,
+  'Every product must have one unique agent-preview asset path.',
+);
 const catalogRules = {
   dress: 'Do not combine a dress with a top or bottom.',
   audience: 'All pieces must match the selected collection.',
@@ -413,6 +462,37 @@ budgetFixtures.push(['maximum bag page', {
   nextStep: 'Continue with page.nextOffset, configure a line, or stop before another shopping action.',
 }]);
 
+const renderKitModel = 'woman';
+const renderKitAudience = 'Women';
+const longestRenderPiece = (slot) => products
+  .filter((product) => product.audience === renderKitAudience && slotForProduct(product) === slot)
+  .toSorted((left, right) => JSON.stringify(right).length - JSON.stringify(left).length)[0];
+const longestAccessories = products
+  .filter((product) => product.audience === renderKitAudience && slotForProduct(product) === 'Accessory')
+  .toSorted((left, right) => JSON.stringify(right).length - JSON.stringify(left).length)
+  .slice(0, 4);
+const maximumRenderPieces = [
+  longestRenderPiece('Top'),
+  longestRenderPiece('Bottom'),
+  longestRenderPiece('Layer'),
+  ...longestAccessories,
+];
+budgetFixtures.push(['maximum look render kit', {
+  status: 'ready',
+  subjectMode: 'customer_photo',
+  model: renderKitModel,
+  size: 'XL',
+  lookIndex: 3,
+  pieces: maximumRenderPieces.map((product) => ({
+    productId: product.id,
+    slot: slotForProduct(product),
+    imageUrl: `https://elane-clothing-boutique.karanrajs.chatgpt.site${agentPreviewAssetPath(product.id)}`,
+  })),
+  customerPhoto: 'Use only a photo from the agent chat; ÉLANE did not receive or store it.',
+  instruction: 'Preview the full outfit on the supplied person; preserve identity and garment colours.',
+  limitation: 'Concept only; not evidence of fit, sizing, proportions, texture, or drape.',
+}]);
+
 budgetFixtures.push(['maximum replan receipt', {
   status: 'replanned',
   model: 'woman',
@@ -480,6 +560,39 @@ assert.deepEqual(
 );
 assert.equal(new Set(documentedTools).size, documentedTools.length, 'README tool inventory must not contain duplicates.');
 assert.doesNotMatch(readme, /github\.com\/your-account/u, 'README must not contain a placeholder repository URL.');
+
+const modelPreviewPrompt = agentPreviewPrompt('editorial_model');
+const personalPreviewPrompt = agentPreviewPrompt('customer_photo');
+assert.match(
+  modelPreviewPrompt,
+  /currently staged outfit on an editorial model/u,
+  'The model-preview prompt must express the requested result in natural language.',
+);
+assert.match(
+  personalPreviewPrompt,
+  /currently staged outfit on me/u,
+  'The personal-preview prompt must express the requested result in natural language.',
+);
+assert.match(
+  personalPreviewPrompt,
+  /If I have not already attached a clear full-body photo in this conversation, ask me to attach one first\./u,
+  'The personal-preview prompt must request a photo only when the conversation does not already contain one.',
+);
+assert.doesNotMatch(
+  `${modelPreviewPrompt} ${personalPreviewPrompt}`,
+  /https?:\/\//u,
+  'Copied preview prompts must use the already-open Style Studio page instead of repeating its URL.',
+);
+assert.doesNotMatch(
+  `${modelPreviewPrompt} ${personalPreviewPrompt}`,
+  /read_look_render_kit|subjectMode/u,
+  'Copied preview prompts must not expose WebMCP implementation details to shoppers.',
+);
+assert.match(
+  `${modelPreviewPrompt} ${personalPreviewPrompt}`,
+  /visual concept, not proof of fit or sizing/u,
+  'Copied preview prompts must preserve the fit and sizing limitation.',
+);
 
 assert.equal(
   promotionApplicationState(0, atelierPromotion.code),
