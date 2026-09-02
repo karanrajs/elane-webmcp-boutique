@@ -16,3 +16,11 @@ export function promotionSavingsCad(subtotalCad: number) {
   if (subtotalCad < atelierPromotion.minimumSubtotalCad) return 0;
   return Math.round(subtotalCad * atelierPromotion.discountPercent / 100);
 }
+
+export function promotionApplicationState(
+  subtotalCad: number,
+  appliedCode?: string,
+): 'available' | 'applied' {
+  if (appliedCode !== atelierPromotion.code) return 'available';
+  return subtotalCad >= atelierPromotion.minimumSubtotalCad ? 'applied' : 'available';
+}

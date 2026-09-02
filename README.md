@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Live demo](https://img.shields.io/badge/Live_demo-ChatGPT_Sites-7b2d3b.svg)](https://elane-clothing-boutique.karanrajs.chatgpt.site)
 
-ÉLANE is a proof of agent-ready commerce: one clothing boutique designed for people to browse visually and for AI agents to help those people complete a shopping task. A shopper can plan outfits for several occasions while accounting for budget, weather, dress code, colour preferences, and clothes they already own. The same editorial storefront exposes 19 native WebMCP tools for structured catalog discovery, styling, sizing, promotion, and shopping-bag actions.
+ÉLANE is a proof of agent-ready commerce: one clothing boutique designed for people to browse visually and for AI agents to help those people complete a shopping task. A shopper can plan outfits for several occasions while accounting for budget, weather, dress code, colour preferences, and clothes they already own. The same editorial storefront exposes 21 native WebMCP tools for structured catalog discovery, styling, sizing, policy checks, promotion, and shopping-bag actions.
 
 **[Open the live application](https://elane-clothing-boutique.karanrajs.chatgpt.site)**
 
@@ -55,9 +55,17 @@ A separate WebMCP runtime test verified structured catalog search, staging the i
 
 ### How WebMCP is implemented
 
-ÉLANE registers 19 imperative, page-scoped tools from [`app/components/atelier-webmcp.tsx`](app/components/atelier-webmcp.tsx). The component feature-detects `document.modelContext`, registers closed input schemas and side-effect annotations, and uses an `AbortController` for lifecycle cleanup. There is no remote WebMCP server in this architecture.
+ÉLANE registers 21 imperative, page-scoped storefront tools from [`app/components/atelier-webmcp.tsx`](app/components/atelier-webmcp.tsx). The Delivery & Returns route also mounts the relevant `read_policy` and `check_return_window` tools through [`app/components/policy-webmcp.tsx`](app/components/policy-webmcp.tsx). Both components feature-detect `document.modelContext`, register closed input schemas and side-effect annotations, and use an `AbortController` for lifecycle cleanup. There is no remote WebMCP server in this architecture.
 
-Each tool delegates to a validated handler in [`app/page.tsx`](app/page.tsx). Read-only handlers return structured catalog, state, bag, or promotion data without changing the UI. Mutating handlers update the same React state used by the human interface, wait for the relevant visible transition, and then return a concise result to the agent. [`app/webmcp-contract.ts`](app/webmcp-contract.ts) enforces pagination and output budgets, while [`scripts/verify-webmcp.mjs`](scripts/verify-webmcp.mjs) checks the registered surface for drift.
+Each tool delegates to a validated handler in [`app/page.tsx`](app/page.tsx). Read-only handlers return structured catalog, state, bag, promotion, or policy data without changing the UI. Mutating handlers update the same React state used by the human interface, wait for the relevant visible transition, and then return a concise result to the agent. [`app/policies.ts`](app/policies.ts) is the shared authority for the visible legal pages and date-aware return checks. [`app/webmcp-contract.ts`](app/webmcp-contract.ts) enforces pagination and output budgets, while [`scripts/verify-webmcp.mjs`](scripts/verify-webmcp.mjs) checks the registered surface for drift.
+
+### Search-first, proof-complete catalog discovery
+
+ÉLANE treats pagination as reliability infrastructure rather than a feature to showcase. `read_catalog` defaults to a compact `overview` containing collection counts, garment-slot facets, the price range, compatibility rules, and explicit routing guidance. For an ordinary shopping request, the agent then calls `search_catalog` with the shopper’s intent, collection, garment slot, and budget instead of walking the complete catalog.
+
+When exhaustive coverage is genuinely required, the same `read_catalog` tool accepts `view: products` and returns denser eight-product pages. Each page includes `totalCount` and `nextOffset`, so an agent can prove that it reached the end without receiving a silently truncated result. Ranked search remains capped at six richer results per page. Both paths stay below ÉLANE’s 1,300-character safety target and 1,500-character hard response limit.
+
+This two-lane contract is the distinctive implementation choice: **ranked search for shopper speed, deterministic pagination for completeness**. It preserves the existing 21-tool surface, avoids a decorative overview tool, reduces a full 88-product read from 15 calls to 11, and keeps every catalog response bounded enough for dependable agent reasoning.
 
 ## Technology
 
@@ -95,9 +103,13 @@ Open the local URL printed by Vinext. No environment variables or external servi
 app/
 ├── page.tsx                         UI, client state, validation, and tool handlers
 ├── catalog.ts                      Catalog data, search ranking, slots, and asset mapping
+├── policies.ts                     Terms, returns, refunds, and date-check authority
+├── returns/page.tsx                Customer-facing delivery and returns policy
+├── terms/page.tsx                  Customer-facing terms and conditions
 ├── webmcp-contract.ts              Shared pagination and output-budget invariants
 ├── components/
-│   └── atelier-webmcp.tsx          WebMCP schemas, registration, and lifecycle
+│   ├── atelier-webmcp.tsx          Storefront WebMCP registration and lifecycle
+│   └── policy-webmcp.tsx           Shared policy tools and legal-route registration
 ├── globals.css                     Shared theme and responsive interface styles
 └── layout.tsx                      Metadata and document shell
 
@@ -111,43 +123,55 @@ The browser is the application boundary. Catalog rules live in `catalog.ts`, vis
 
 ## WebMCP tool inventory
 
+Tool identifiers use concise, verb-first `snake_case` and stay within WebMCP’s portable name character set. Registrations omit the optional `title`, allowing ChatGPT to show the identifier as the heading, derive Read or Write from `readOnlyHint`, and place the tool description beneath it.
+
 ### Catalog and styling
 
 | Tool | Kind | Purpose |
 | --- | --- | --- |
-| `elane_read_atelier_catalog` | Read | Return one catalog page with IDs, prices, slots, and compatibility rules. |
-| `elane_read_atelier_state` | Read | Return one compact view of the current look, capsule, constraints, or customer product lists. |
-| `elane_search_atelier_catalog` | Read | Return one ranked page for a natural-language name, colour, garment, or style search. |
-| `elane_stage_atelier_look` | Stage | Replace the visible board with one validated women’s or men’s look. |
-| `elane_set_atelier_size` | Configure | Change the displayed size without changing the bag. |
-| `elane_add_staged_item` | Configure | Add one compatible product to an empty slot in the current look. |
-| `elane_remove_staged_item` | Configure | Remove one unlocked product from the current look. |
-| `elane_replace_staged_item` | Configure | Replace one product with another from the same collection and slot. |
+| `read_catalog` | Read | Return a compact overview by default or dense, proof-complete product pages for exhaustive reads. |
+| `read_style_state` | Read | Return one compact view of the current look, capsule, constraints, or customer product lists. |
+| `search_catalog` | Read | Return one ranked page for a natural-language name, colour, garment, or style search. |
+| `stage_look` | Stage | Replace the visible board with one validated women’s or men’s look. |
+| `set_look_size` | Configure | Change the displayed size without changing the bag. |
+| `add_look_item` | Configure | Add one compatible product to an empty slot in the current look. |
+| `remove_look_item` | Configure | Remove one unlocked product from the current look. |
+| `replace_look_item` | Configure | Replace one product with another from the same collection and slot. |
 
-### Capsule planning
+### Advanced capsule planning (optional)
+
+The core WebMCP journey works with one staged look and does not depend on capsule planning. Use these advanced tools only when a shopper needs coordinated options for two or more occasions, shared-piece budget accounting, or a constraint-aware replan.
 
 | Tool | Kind | Purpose |
 | --- | --- | --- |
-| `elane_stage_capsule_journey` | Stage | Batch-stage two to four occasion-specific looks with an optional budget. |
-| `elane_replan_capsule` | Configure | Atomically revise a capsule while preserving locked pieces and applying new constraints. |
+| `stage_capsule` | Stage | Batch-stage two to four occasion-specific looks with an optional budget. |
+| `replan_capsule` | Configure | Atomically revise a capsule while preserving locked pieces and applying new constraints. |
 
 ### Shopping bag
 
 | Tool | Kind | Purpose |
 | --- | --- | --- |
-| `elane_read_shopping_bag` | Read | Return one page of bag lines plus quantities, sizes, and CAD totals. |
-| `elane_read_promotions` | Read | Return authoritative promotion terms and current-bag eligibility without changing state. |
-| `elane_apply_promotion` | Configure | Apply an eligible promotion code to the visible bag totals after user intent. |
-| `elane_add_catalog_item_to_bag` | Complete | Add one catalog item directly to the bag. |
-| `elane_add_staged_look_to_bag` | Complete | Add every item in the current look or a selected capsule look. |
-| `elane_adjust_bag_item_quantity` | Configure | Increase or decrease one bag line by one unit. |
-| `elane_set_bag_item_size` | Configure | Change the size of one existing bag line. |
-| `elane_remove_bag_items` | Configure | Remove selected product lines. |
-| `elane_clear_shopping_bag` | Configure | Clear the complete bag after an explicit request. |
+| `read_bag` | Read | Return one page of bag lines plus quantities, sizes, and CAD totals. |
+| `read_promotions` | Read | Return authoritative promotion terms and current-bag eligibility without changing state. |
+| `read_policy` | Read | Read terms, returns, refunds, delivery, order, or promotion conditions from the shared policy authority. |
+| `check_return_window` | Read | Calculate a return deadline and assess supplied item conditions without authorizing a return. |
+| `apply_promotion` | Configure | Apply an eligible promotion code to the visible bag totals after user intent. |
+| `add_item_to_bag` | Complete | Add one catalog item directly to the bag. |
+| `add_look_to_bag` | Complete | Add every item in the current look or a selected capsule look. |
+| `adjust_bag_quantity` | Configure | Increase or decrease one bag line by one unit. |
+| `set_bag_item_size` | Configure | Change the size of one existing bag line. |
+| `remove_bag_items` | Configure | Remove selected product lines. |
+| `clear_bag` | Configure | Clear the complete bag after an explicit request. |
 
 ## Example agent-assisted shopping sequence
 
-This example shows the agent translating a broad request into working search criteria, then using the WebMCP flow verified against the live site. The shopper remains involved by reviewing the visible result, refining the trouser colour, confirming the size, and explicitly approving the bag change.
+This is the three-prompt use case for the demo video. It shows the agent translating an occasion and budget into a staged look, making one precise revision, and completing only the bag and promotion actions the shopper explicitly approves.
+
+1. **Prompt 1:** “Can you help me find one polished smart-casual outfit for OpenAI DevDay 2026 in San Francisco, within a budget of CAD 1,500, and stage it in the Style Studio?”
+2. **Prompt 2:** “Change the pant to light colour and set the size to M.”
+3. **Prompt 3:** “Add this approved outfit to my shopping bag and check and apply if there is an eligible promotional offer.”
+
+Prompt 1 authorizes research and Style Studio staging, not a bag change. Prompt 2 authorizes the trouser replacement and Style Studio size change. Prompt 3 authorizes adding the approved outfit, checking the current bag against authoritative offer terms, and applying an eligible offer; it does not authorize checkout, payment, or order placement.
 
 ```mermaid
 sequenceDiagram
@@ -157,51 +181,52 @@ sequenceDiagram
     participant UI as ÉLANE site UI
 
     Note over Site,UI: The page has registered its WebMCP tools
-    Shopper->>Agent: Can you help me to find office attire for this winter with the budget of 1500
-    Note over Agent: Translate the request into winter office criteria and a CAD 1,500 budget
+    Shopper->>Agent: Find one polished smart-casual outfit for OpenAI DevDay 2026 in San Francisco, within CAD 1,500, and stage it in the Style Studio
+    Note over Agent: Translate the occasion, city, dress code, and CAD 1,500 budget into search criteria
 
-    Agent->>Site: elane_read_atelier_state(view summary)
+    Agent->>Site: read_style_state(view summary)
     Site-->>Agent: Current model, size, presentation, and staged IDs
 
     loop Search Top, Bottom, Layer, and Accessory
-        Agent->>Site: elane_search_atelier_catalog(query winter office attire, current model, slot)
+        Agent->>Site: search_catalog(query polished smart-casual DevDay San Francisco, model man, slot)
         Site-->>Agent: status ready and ranked product IDs
     end
 
-    Agent->>Site: elane_stage_atelier_look(top 51, bottom 53, layer 49, accessory 79)
+    Agent->>Site: stage_look(top 51, bottom 69, layer 54, accessory 86)
     Site->>UI: Show the selected pieces in Style Studio
     UI-->>Site: Garment board rendered
     Site-->>Agent: status composed, preview visible, bagChange none
-    Agent-->>Shopper: The CAD 1,255 winter office look is visible and within budget
+    Agent-->>Shopper: The CAD 1,195 DevDay look is visible and within budget
 
-    Shopper->>Agent: Change the pants to charcoal
-    Agent->>Site: elane_search_atelier_catalog(query charcoal trousers, model man, slot Bottom)
-    Site-->>Agent: Flannel Tailored Trouser, product 69, CAD 310
-    Agent->>Site: elane_replace_staged_item(product 53, replacement 69)
+    Shopper->>Agent: Change the pant to light colour and set the size to M
+    Agent->>Site: search_catalog(query light-colour trousers, model man, slot Bottom)
+    Site-->>Agent: Single-Pleat Chino in Stone, product 64, CAD 225
+    Agent->>Site: replace_look_item(product 69, replacement 64)
     Site->>UI: Replace only the staged trousers
     UI-->>Site: Revised garment board rendered
-    Site-->>Agent: status replaced, bottom 69, bagChange none
-    Agent-->>Shopper: The charcoal-trouser look is visible at CAD 1,270
-
-    Shopper->>Agent: Set the size to M
-    Agent->>Site: elane_set_atelier_size(size M)
+    Site-->>Agent: status replaced, bottom 64, bagChange none
+    Agent->>Site: set_look_size(size M)
     Site->>UI: Show size M in Style Studio
     UI-->>Site: Selected size rendered
     Site-->>Agent: status unchanged or updated, size M, bagChange none
-    Agent-->>Shopper: Size M is confirmed and the bag is still unchanged
+    Agent-->>Shopper: The light-trouser look is visible in size M at CAD 1,110 and the bag is unchanged
 
-    Shopper->>Agent: Add this look to my bag and check for a discount
-    Agent->>Site: elane_add_staged_look_to_bag(size M)
+    Shopper->>Agent: Add this approved outfit to my shopping bag and check and apply if there is an eligible promotional offer
+    Agent->>Site: add_look_to_bag(size M)
     Site->>UI: Add the approved pieces and open the bag
     UI-->>Site: Bag rendered with four size-M lines
-    Site-->>Agent: status added, bag visible, subtotal CAD 1,270
-    Agent->>Site: elane_read_shopping_bag(offset 0, limit 6)
-    Site-->>Agent: Four lines, size M, subtotal CAD 1,270
-    Agent->>Site: elane_read_promotions()
-    Site-->>Agent: ATELIER15 eligible, savings CAD 191, applied false
-    Agent-->>Shopper: The offer is eligible with an estimated total of CAD 1,079
+    Site-->>Agent: status added, bag visible, subtotal CAD 1,110
+    Agent->>Site: read_bag(offset 0, limit 6)
+    Site-->>Agent: Four lines, size M, subtotal CAD 1,110
+    Agent->>Site: read_promotions()
+    Site-->>Agent: ATELIER15 eligible, savings CAD 167, applied false
+    Agent->>Site: apply_promotion(code ATELIER15)
+    Site->>UI: Apply the eligible offer to the visible bag totals
+    UI-->>Site: Discount CAD 167 and estimated total CAD 943 rendered
+    Site-->>Agent: ATELIER15 applied, checkout not started
+    Agent-->>Shopper: The approved outfit is in the bag and the eligible offer is applied; estimated total CAD 943
 
-    Note over Shopper,Agent: The agent reports the offer but does not apply it without another request
+    Note over Shopper,Agent: The workflow ends in the bag; no checkout, payment, or order placement
 ```
 
 ## State and production boundaries

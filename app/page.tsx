@@ -1,6 +1,6 @@
 'use client';
 
-/* eslint-disable @next/next/no-img-element -- Vinext currently duplicates the React renderer when next/image is introduced in this client surface. */
+/* eslint-disable @next/next/no-img-element, @next/next/no-html-link-for-pages -- Vinext currently duplicates the React renderer when Next client primitives are introduced in this client surface. */
 
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import {
@@ -34,10 +34,15 @@ import {
 import {
   WEBMCP_BAG_PAGE_LIMIT,
   WEBMCP_CATALOG_PAGE_LIMIT,
+  WEBMCP_SEARCH_PAGE_LIMIT,
   WEBMCP_STATE_LIST_PAGE_LIMIT,
   pageForWebMcp,
 } from './webmcp-contract';
-import { atelierPromotion, promotionSavingsCad } from './promotions';
+import { atelierPromotion, promotionApplicationState, promotionSavingsCad } from './promotions';
+import {
+  checkReturnWindowFromWebMcp,
+  readPolicyFromWebMcp,
+} from './policies';
 
 type CartItem = Product & { quantity: number; size: string };
 type AudienceFilter = 'All' | Product['audience'];
@@ -49,6 +54,8 @@ const categoryLabels: Record<AudienceFilter, Partial<Record<CategoryName, string
   Women: { Tops: 'Tops & blouses' },
   Men: { Tops: 'Shirts & polos' },
 };
+const audienceFilters = new Set<AudienceFilter>(['All', 'Women', 'Men']);
+const categoryFilters = new Set<CategoryFilter>(['All', ...categoryOrderList]);
 const atelierSizes = ['XS', 'S', 'M', 'L', 'XL'] as const;
 type AtelierSize = (typeof atelierSizes)[number];
 
@@ -57,6 +64,58 @@ const categoryOrder = new Map<string, number>(categoryOrderList.map((item, index
 
 function currency(value: number) {
   return new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD', maximumFractionDigits: 0 }).format(value);
+}
+
+function productHref(product: Product) {
+  const slug = product.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  return `/products/${product.id}-${slug}`;
+}
+
+function collectionHref(audience: AudienceFilter = 'All', category: CategoryFilter = 'All') {
+  const params = new URLSearchParams();
+  if (audience !== 'All') params.set('audience', audience);
+  if (category !== 'All') params.set('category', category);
+  const query = params.toString();
+  return `/${query ? `?${query}` : ''}#collection`;
+}
+
+function productDescription(product: Product) {
+  const descriptions: Record<string, string> = {
+    Outerwear: `A considered outer layer with a clean, architectural line. The ${product.color.toLowerCase()} tone is designed to settle easily over tailoring, knitwear, and everyday separates.`,
+    Knitwear: `A refined knit designed for comfortable layering and a polished drape. Its ${product.color.toLowerCase()} tone brings quiet depth to an everyday wardrobe.`,
+    Tailoring: `Modern tailoring with an easy, composed silhouette. Designed to sharpen softer layers while remaining comfortable from morning through evening.`,
+    Dresses: `An effortless one-piece silhouette with considered proportion and movement. Dress it up with tailoring or keep the line clean and understated.`,
+    Tops: `A versatile foundation piece with a clean neckline and an easy fit. Designed to work alone or sit smoothly beneath knitwear and tailoring.`,
+    Trousers: `A polished trouser with a fluid line and considered proportion. Made to pair naturally with both relaxed knitwear and structured layers.`,
+    Skirts: `A modern skirt with an easy line and graceful movement. Its restrained shape makes room for both soft knitwear and sharper tailoring.`,
+    Denim: `A refined approach to denim with a clean silhouette and versatile finish. Designed for repeat wear across casual and polished looks.`,
+    Accessories: `A finishing piece selected for proportion, texture, and everyday versatility. The ${product.color.toLowerCase()} colourway is designed to work across the ÉLANE wardrobe.`,
+  };
+  return descriptions[product.category] ?? 'A considered ÉLANE piece designed for a modern, versatile wardrobe.';
+}
+
+function productMaterial(product: Product) {
+  const materialNames = ['Cashmere', 'Merino', 'Wool', 'Leather', 'Cotton', 'Linen', 'Denim', 'Suede', 'Alpaca', 'Silk', 'Satin', 'Jersey', 'Corduroy', 'Velvet', 'Poplin', 'Georgette', 'Boucle'];
+  return materialNames.find((material) => product.name.toLowerCase().includes(material.toLowerCase()))
+    ?? ({
+      Outerwear: 'Structured woven fabric',
+      Knitwear: 'Fine-gauge knit',
+      Tailoring: 'Tailoring-weight fabric',
+      Dresses: 'Draped atelier fabric',
+      Tops: 'Soft shirting fabric',
+      Trousers: 'Tailoring-weight fabric',
+      Skirts: 'Fluid woven fabric',
+      Denim: 'Cotton denim',
+      Accessories: 'Selected leather or textile',
+    }[product.category] ?? 'Selected atelier fabric');
+}
+
+function productFit(product: Product) {
+  if (product.category === 'Accessories') return 'One size';
+  if (product.category === 'Outerwear' || product.category === 'Tailoring') return 'Easy layering fit · take your usual size';
+  if (product.category === 'Trousers' || product.category === 'Skirts' || product.category === 'Denim') return 'Designed to sit naturally at the waist · take your usual size';
+  if (product.category === 'Dresses') return 'Considered, fluid fit · take your usual size';
+  return 'True to size with an easy silhouette';
 }
 
 function bagSummary(items: CartItem[]) {
@@ -395,6 +454,7 @@ type CapsuleRevision = {
 
 type PersistedElaneSession = {
   version: 1;
+  styleCollection: ModelId | null;
   model: ModelId;
   isCapsuleJourney: boolean;
   activeJourneyIndex: number;
@@ -410,7 +470,6 @@ type PersistedElaneSession = {
     quantity: number;
     size: AtelierSize;
   }>;
-  appliedPromotionCode?: string;
 };
 
 const elaneSessionStorageKey = 'elane:working-session:v1';
@@ -581,6 +640,18 @@ function styleSlotPlural(slot: StyleSlot) {
   return `${slot.toLowerCase()}s`;
 }
 
+const productImageSurfaceBySheet: Record<string, string> = {
+  '/elane-men-products.jpg': '#f9efe2',
+  '/elane-men-products-02.jpg': '#f7efe5',
+  '/elane-men-products-03.jpg': '#f6efe7',
+  '/elane-men-products-04.jpg': '#f8f0e7',
+  '/elane-women-products.jpg': '#f6ede1',
+  '/elane-women-products-02.jpg': '#f7eee5',
+  '/elane-women-products-03.jpg': '#ece4da',
+  '/elane-women-products-04.jpg': '#fcf3ea',
+  '/elane-women-products-05.jpg': '#f7eee5',
+};
+
 function ProductVisual({ product, className = '', decorative = false }: {
   product: Product;
   className?: string;
@@ -592,6 +663,7 @@ function ProductVisual({ product, className = '', decorative = false }: {
     '--product-x': `${(product.spriteColumn / 3) * 100}%`,
     '--product-y': `${product.spriteRow * 100}%`,
     '--product-aspect': spriteAspect,
+    '--product-surface': productImageSurfaceBySheet[product.image] ?? '#f7efe5',
   } as React.CSSProperties;
 
   return (
@@ -1130,6 +1202,14 @@ function readPersistedElaneSession(): PersistedElaneSession | null {
     if (value.model !== 'woman' && value.model !== 'man') {
       throw new Error('Persisted collection is invalid.');
     }
+    if (
+      value.styleCollection !== undefined
+      && value.styleCollection !== null
+      && value.styleCollection !== 'woman'
+      && value.styleCollection !== 'man'
+    ) {
+      throw new Error('Persisted Style Studio collection is invalid.');
+    }
     if (typeof value.isCapsuleJourney !== 'boolean') {
       throw new Error('Persisted presentation mode is invalid.');
     }
@@ -1141,15 +1221,30 @@ function readPersistedElaneSession(): PersistedElaneSession | null {
     }
 
     const model = value.model;
+    // Sessions saved before an explicit collection choice existed should reopen
+    // to the new neutral Style Studio instead of restoring the old women-first default.
+    const styleCollection = value.styleCollection === 'woman' || value.styleCollection === 'man'
+      ? value.styleCollection
+      : null;
+    if (styleCollection && styleCollection !== model) {
+      throw new Error('Persisted Style Studio collection does not match its model.');
+    }
     const journey = validatePersistedJourney(value.journey, model);
     const activeJourneyIndex = Math.min(value.activeJourneyIndex as number, journey.looks.length - 1);
-    const selections = value.isCapsuleJourney
-      ? cloneSelections(journey.looks[activeJourneyIndex].selections)
-      : validatePersistedSelections(value.selections, model);
+    const isCapsuleJourney = styleCollection ? value.isCapsuleJourney : false;
+    const selections = styleCollection
+      ? isCapsuleJourney
+        ? cloneSelections(journey.looks[activeJourneyIndex].selections)
+        : validatePersistedSelections(value.selections, model)
+      : {};
     const capsuleConstraints = validatePersistedConstraints(value.capsuleConstraints);
-    const ownedProductIds = validateCapsuleProductIds(value.ownedProductIds, 'Persisted ownedProductIds', model);
-    const excludedProductIds = validateCapsuleProductIds(value.excludedProductIds, 'Persisted excludedProductIds', model);
-    const lockedProductIds = value.isCapsuleJourney
+    const ownedProductIds = styleCollection
+      ? validateCapsuleProductIds(value.ownedProductIds, 'Persisted ownedProductIds', model)
+      : [];
+    const excludedProductIds = styleCollection
+      ? validateCapsuleProductIds(value.excludedProductIds, 'Persisted excludedProductIds', model)
+      : [];
+    const lockedProductIds = styleCollection && isCapsuleJourney
       ? validateCapsuleProductIds(value.lockedProductIds, 'Persisted lockedProductIds', model)
       : [];
     const capsuleIds = new Set(capsuleProductIds(journey));
@@ -1179,18 +1274,12 @@ function readPersistedElaneSession(): PersistedElaneSession | null {
       bagIds.add(product.id);
       return { ...product, quantity: item.quantity as number, size: item.size as AtelierSize };
     });
-    const appliedPromotionCode = value.appliedPromotionCode === undefined
-      ? undefined
-      : validatedText(value.appliedPromotionCode, 'Persisted promotion code', 32).toUpperCase();
-    if (appliedPromotionCode && appliedPromotionCode !== atelierPromotion.code) {
-      throw new Error('Persisted promotion code is not available.');
-    }
-
     return {
       version: 1,
+      styleCollection,
       model,
-      isCapsuleJourney: value.isCapsuleJourney,
-      activeJourneyIndex,
+      isCapsuleJourney,
+      activeJourneyIndex: isCapsuleJourney ? activeJourneyIndex : 0,
       journey,
       selections,
       size: value.size as AtelierSize,
@@ -1199,7 +1288,6 @@ function readPersistedElaneSession(): PersistedElaneSession | null {
       excludedProductIds,
       lockedProductIds,
       bag: bag.map((item) => ({ productId: item.id, quantity: item.quantity, size: item.size as AtelierSize })),
-      appliedPromotionCode,
     };
   } catch (error) {
     console.warn('Unable to restore the saved ÉLANE session. Starting with a fresh session.', error);
@@ -1421,7 +1509,9 @@ function ProductCard({ product, onAdd, onStyle, selected }: {
   return (
     <article className={`product-card ${selected ? 'style-selected' : ''}`}>
       <div className="product-image-wrap">
-        <ProductVisual product={product} className="product-card-image" />
+        <a className="product-detail-link" href={productHref(product)} aria-label={`View ${product.name} details`}>
+          <ProductVisual product={product} className="product-card-image" />
+        </a>
         <span className="atelier-ready-badge">Style Studio</span>
         <div className="product-actions">
           <button
@@ -1433,10 +1523,128 @@ function ProductCard({ product, onAdd, onStyle, selected }: {
         </div>
       </div>
       <div className="product-meta">
-        <div><h3>{product.name}</h3><p>{product.color} · {product.audience}</p></div>
+        <div><h3><a href={productHref(product)}>{product.name}</a></h3><p>{product.color} · {product.audience}</p></div>
         <strong>{currency(product.price)}</strong>
       </div>
     </article>
+  );
+}
+
+type ProductGalleryView = 'front' | 'cutout' | 'detail';
+
+function ProductDetail({ product, relatedProducts, initialSize, onAdd }: {
+  product: Product;
+  relatedProducts: Product[];
+  initialSize: AtelierSize;
+  onAdd: (product: Product, chosenSize?: AtelierSize, reveal?: boolean) => void;
+}) {
+  const [galleryView, setGalleryView] = useState<ProductGalleryView>('front');
+  const [selectedSize, setSelectedSize] = useState<AtelierSize>(initialSize);
+  const isAccessory = product.category === 'Accessories';
+  const galleryLabels: Record<ProductGalleryView, string> = {
+    front: 'Full view',
+    cutout: 'Silhouette',
+    detail: 'Detail',
+  };
+
+  const galleryVisual = (view: ProductGalleryView, thumbnail = false) => {
+    if (view === 'cutout') {
+      return <div className={thumbnail ? 'product-gallery-cutout thumbnail' : 'product-gallery-cutout'}><GarmentBoardVisual product={product} /></div>;
+    }
+    return (
+      <ProductVisual
+        product={product}
+        className={`${thumbnail ? 'product-gallery-thumbnail-image' : 'product-detail-image'} ${view === 'detail' ? 'product-detail-image-crop' : ''}`}
+        decorative={thumbnail}
+      />
+    );
+  };
+
+  return (
+    <>
+      <section className="product-detail-page" aria-labelledby="product-detail-title">
+        <nav className="product-breadcrumb" aria-label="Breadcrumb">
+          <a href={collectionHref()}>Shop</a><span aria-hidden="true">/</span><a href={collectionHref(product.audience, product.category as CategoryFilter)}>{product.category}</a><span aria-hidden="true">/</span><span>{product.name}</span>
+        </nav>
+
+        <div className="product-detail-layout">
+          <div className="product-gallery">
+            <div className={`product-gallery-main view-${galleryView}`} aria-live="polite">
+              {galleryVisual(galleryView)}
+              <span className="product-gallery-caption">{galleryLabels[galleryView]} · {product.color}</span>
+            </div>
+            <div className="product-gallery-thumbnails" aria-label="Product images">
+              {(Object.keys(galleryLabels) as ProductGalleryView[]).map((view) => (
+                <button
+                  className={galleryView === view ? 'active' : ''}
+                  key={view}
+                  type="button"
+                  onClick={() => setGalleryView(view)}
+                  aria-pressed={galleryView === view}
+                  aria-label={`Show ${galleryLabels[view].toLowerCase()}`}
+                >
+                  {galleryVisual(view, true)}
+                  <span>{galleryLabels[view]}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="product-purchase-panel">
+            <p className="product-kicker">{product.audience} · {product.category}</p>
+            <h1 id="product-detail-title">{product.name}</h1>
+            <div className="product-detail-price"><span>{product.color}</span><strong>{currency(product.price)}</strong></div>
+            <p className="product-description">{productDescription(product)}</p>
+
+            <div className="product-size-section">
+              <div className="product-size-heading"><span>Select size</span>{!isAccessory ? <a href="#fit-details">Size &amp; fit</a> : null}</div>
+              {isAccessory ? (
+                <button className="one-size-option" type="button" aria-pressed="true">One size</button>
+              ) : (
+                <div className="product-size-options">
+                  {atelierSizes.map((item) => (
+                    <button
+                      className={selectedSize === item ? 'active' : ''}
+                      key={item}
+                      type="button"
+                      onClick={() => setSelectedSize(item)}
+                      aria-pressed={selectedSize === item}
+                    >{item}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <button className="product-add-button" type="button" onClick={() => onAdd(product, isAccessory ? 'M' : selectedSize)}>
+              Add to bag <span>{currency(product.price)}</span>
+            </button>
+            <p className="product-delivery-note">Complimentary delivery and returns on every order.</p>
+
+            <dl className="product-specifications" id="fit-details">
+              <div><dt>Material character</dt><dd>{productMaterial(product)}</dd></div>
+              <div><dt>Size &amp; fit</dt><dd>{productFit(product)}</dd></div>
+              <div><dt>Care</dt><dd>Follow the care label. Store folded or on a supportive hanger as appropriate.</dd></div>
+              <div><dt>Style note</dt><dd>Pair with tonal neutrals, then add one contrasting texture for a considered finish.</dd></div>
+            </dl>
+          </div>
+        </div>
+      </section>
+
+      <section className="related-products" aria-labelledby="related-products-title">
+        <div className="related-products-heading"><p className="section-index">Continue exploring</p><h2 id="related-products-title">You may also like.</h2></div>
+        <div className="related-products-grid">
+          {relatedProducts.map((relatedProduct) => (
+            <article key={relatedProduct.id}>
+              <a href={productHref(relatedProduct)} aria-label={`View ${relatedProduct.name} details`}>
+                <ProductVisual product={relatedProduct} className="related-product-image" />
+                <div><h3>{relatedProduct.name}</h3><strong>{currency(relatedProduct.price)}</strong></div>
+                <p>{relatedProduct.color} · {relatedProduct.category}</p>
+              </a>
+            </article>
+          ))}
+        </div>
+      </section>
+    </>
   );
 }
 
@@ -1526,7 +1734,6 @@ function BagDrawer({ items, open, appliedPromotionCode, onClose, onQuantity, onC
 }) {
   const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const discount = appliedPromotionCode ? promotionSavingsCad(subtotal) : 0;
-  const amountNeeded = Math.max(0, atelierPromotion.minimumSubtotalCad - subtotal);
   return (
     <>
       <button className={`drawer-scrim ${open ? 'visible' : ''}`} aria-label="Close shopping bag" onClick={onClose} tabIndex={open ? 0 : -1} />
@@ -1544,7 +1751,7 @@ function BagDrawer({ items, open, appliedPromotionCode, onClose, onQuantity, onC
             {items.map((item) => (
               <div className="bag-line" key={item.id}>
                 <ProductVisual product={item} className="bag-product-image" decorative />
-                <div><h3>{item.name}</h3><p>{item.color} · Size {item.size}</p><strong>{currency(item.price)}</strong></div>
+                <div><h3>{item.name}</h3><p>{item.color} · {item.category === 'Accessories' ? 'One size' : `Size ${item.size}`}</p><strong>{currency(item.price)}</strong></div>
                 <div className="quantity" aria-label={`Quantity for ${item.name}`}>
                   <button type="button" onClick={() => onQuantity(item.id, -1)} aria-label="Decrease quantity">−</button>
                   <span>{item.quantity}</span>
@@ -1558,8 +1765,8 @@ function BagDrawer({ items, open, appliedPromotionCode, onClose, onQuantity, onC
           <div><span>Subtotal</span><strong>{currency(subtotal)}</strong></div>
           {open && appliedPromotionCode ? (
             <div className="promotion-total" aria-live="polite">
-              <span>{discount ? `${appliedPromotionCode} · ${atelierPromotion.discountPercent}% off` : `${appliedPromotionCode} saved · add ${currency(amountNeeded)} to reactivate`}</span>
-              <strong>{discount ? `−${currency(discount)}` : currency(0)}</strong>
+              <span>{appliedPromotionCode} · {atelierPromotion.discountPercent}% off</span>
+              <strong>−{currency(discount)}</strong>
             </div>
           ) : null}
           {discount ? <div className="grand-total"><span>Estimated total</span><strong>{currency(subtotal - discount)}</strong></div> : null}
@@ -1638,7 +1845,7 @@ function Checkout({ open, subtotal, discount, onClose, onApplyPromotion }: {
   );
 }
 
-export default function Home() {
+export function Boutique({ initialProductId }: { initialProductId?: number } = {}) {
   const [search, setSearch] = useState('');
   const deferredSearch = useDeferredValue(search);
   const [atelierSearch, setAtelierSearch] = useState('');
@@ -1655,12 +1862,11 @@ export default function Home() {
   const [activeJourneyIndex, setActiveJourneyIndex] = useState(0);
   const [isCapsuleJourney, setIsCapsuleJourney] = useState(false);
   const [manualEditorOpen, setManualEditorOpen] = useState(false);
+  const [styleCollection, setStyleCollection] = useState<ModelId | null>(null);
   const [model, setModel] = useState<ModelId>('woman');
-  const [selections, setSelections] = useState<StyleSelections>(() => (
-    cloneSelections(curatedJourneys.woman.looks[0].selections)
-  ));
+  const [selections, setSelections] = useState<StyleSelections>({});
   const [activeStyleSlot, setActiveStyleSlot] = useState<StyleSlot>('Top');
-  const [previewStatus, setPreviewStatus] = useState<'idle' | 'ready' | 'error'>('ready');
+  const [previewStatus, setPreviewStatus] = useState<'idle' | 'ready' | 'error'>('idle');
   const [previewError, setPreviewError] = useState('');
   const [size, setSize] = useState<AtelierSize>('M');
   const [capsuleConstraints, setCapsuleConstraints] = useState<CapsuleConstraints>(() => (
@@ -1672,6 +1878,39 @@ export default function Home() {
   const [capsuleRevision, setCapsuleRevision] = useState<CapsuleRevision | null>(null);
   const [sessionReady, setSessionReady] = useState(false);
   const [appliedPromotionCode, setAppliedPromotionCode] = useState<string>();
+  const activeProduct = initialProductId ? productById.get(initialProductId) : undefined;
+  const relatedProducts = useMemo(() => {
+    if (!activeProduct) return [];
+    const sameCategory = products.filter((product) => (
+      product.id !== activeProduct.id
+      && product.audience === activeProduct.audience
+      && product.category === activeProduct.category
+    ));
+    const sameAudience = products.filter((product) => (
+      product.id !== activeProduct.id
+      && product.audience === activeProduct.audience
+      && product.category !== activeProduct.category
+    ));
+    return [...sameCategory, ...sameAudience].slice(0, 4);
+  }, [activeProduct]);
+
+  useEffect(() => {
+    if (activeProduct) return;
+    const restoreCatalogFilters = window.setTimeout(() => {
+      const params = new URLSearchParams(window.location.search);
+      const requestedAudience = params.get('audience');
+      const requestedCategory = params.get('category');
+      const nextAudience = requestedAudience && audienceFilters.has(requestedAudience as AudienceFilter)
+        ? requestedAudience as AudienceFilter
+        : 'All';
+      const nextCategory = requestedCategory && categoryFilters.has(requestedCategory as CategoryFilter)
+        ? requestedCategory as CategoryFilter
+        : 'All';
+      setAudience(nextAudience);
+      setCategory(nextCategory);
+    }, 0);
+    return () => window.clearTimeout(restoreCatalogFilters);
+  }, [activeProduct]);
 
   useEffect(() => {
     const restoreTask = window.setTimeout(() => {
@@ -1681,6 +1920,7 @@ export default function Home() {
           const product = productById.get(item.productId);
           return product ? [{ ...product, quantity: item.quantity, size: item.size }] : [];
         });
+        setStyleCollection(savedSession.styleCollection);
         setModel(savedSession.model);
         setIsCapsuleJourney(savedSession.isCapsuleJourney);
         setActiveJourneyIndex(savedSession.activeJourneyIndex);
@@ -1692,7 +1932,6 @@ export default function Home() {
         setExcludedProductIds([...savedSession.excludedProductIds]);
         setLockedProductIds([...savedSession.lockedProductIds]);
         setCart(savedBag);
-        setAppliedPromotionCode(savedSession.appliedPromotionCode);
         setCapsuleRevision(null);
         setPreviewStatus(selectedProductIds(savedSession.selections).length ? 'ready' : 'idle');
         setPreviewError('');
@@ -1706,6 +1945,7 @@ export default function Home() {
     if (!sessionReady) return;
     const session: PersistedElaneSession = {
       version: 1,
+      styleCollection,
       model,
       isCapsuleJourney,
       activeJourneyIndex: isCapsuleJourney ? activeJourneyIndex : 0,
@@ -1721,7 +1961,6 @@ export default function Home() {
         quantity: item.quantity,
         size: item.size as AtelierSize,
       })),
-      appliedPromotionCode,
     };
     try {
       window.localStorage.setItem(elaneSessionStorageKey, JSON.stringify(session));
@@ -1730,7 +1969,6 @@ export default function Home() {
     }
   }, [
     activeJourneyIndex,
-    appliedPromotionCode,
     capsuleConstraints,
     cart,
     excludedProductIds,
@@ -1742,6 +1980,7 @@ export default function Home() {
     selections,
     sessionReady,
     size,
+    styleCollection,
   ]);
 
   useEffect(() => {
@@ -1789,6 +2028,12 @@ export default function Home() {
     };
   }, [bagOpen, checkoutOpen, mobileNavOpen, promotionOpen]);
 
+  const revokePromotionIfIneligible = useCallback((nextCart: CartItem[]) => {
+    if (bagSummary(nextCart).subtotalCad < atelierPromotion.minimumSubtotalCad) {
+      setAppliedPromotionCode(undefined);
+    }
+  }, []);
+
   const selectAudience = useCallback((nextAudience: AudienceFilter) => {
     setAudience(nextAudience);
     setCategory('All');
@@ -1815,6 +2060,7 @@ export default function Home() {
         return categoryDifference || left.id - right.id;
       });
   }, [audience, category, deferredSearch]);
+  const catalogIsUpdating = search !== deferredSearch;
   const catalogIsFiltered = audience !== 'All' || category !== 'All' || deferredSearch.trim().length > 0;
   const displayedProducts = catalogExpanded || catalogIsFiltered ? visibleProducts : visibleProducts.slice(0, 8);
 
@@ -1822,7 +2068,7 @@ export default function Home() {
     setCart((current) => {
       const existing = current.find((item) => item.id === product.id);
       return existing
-        ? current.map((item) => item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item)
+        ? current.map((item) => item.id === product.id ? { ...item, quantity: item.quantity + 1, size: chosenSize } : item)
         : [...current, { ...product, quantity: 1, size: chosenSize }];
     });
     if (reveal) setBagOpen(true);
@@ -1865,15 +2111,17 @@ export default function Home() {
   }, [bagOpen]);
 
   const navigateToAtelier = useCallback((event: MouseEvent<HTMLAnchorElement>) => {
-    event.preventDefault();
     setMobileNavOpen(false);
+    if (activeProduct) return;
+    event.preventDefault();
     if (window.location.hash !== '#atelier') {
       window.history.pushState(null, '', '#atelier');
     }
     void focusAtelier();
-  }, [focusAtelier]);
+  }, [activeProduct, focusAtelier]);
 
   const showToolLook = useCallback(async (look: ValidatedToolLook) => {
+    setStyleCollection(look.model);
     setModel(look.model);
     setSelections(look.selections);
     setActiveStyleSlot(slotForProduct(look.pieces[look.pieces.length - 1]));
@@ -1906,7 +2154,7 @@ export default function Home() {
         selectedPieces,
         previewVisible: true,
         bagChange: 'none',
-        nextStep: 'Use an incremental staged-item tool to refine the visible look, or elane_add_staged_look_to_bag only after the user chooses it.',
+        nextStep: 'Use an incremental look-item tool to refine the visible look, or add_look_to_bag only after the user chooses it.',
         message: 'The selected pieces are visible as a garment-only editorial board in the Style Studio.',
       };
     }
@@ -1928,17 +2176,24 @@ export default function Home() {
     if (rawInput !== undefined && (
       !rawInput || typeof rawInput !== 'object' || Array.isArray(rawInput)
     )) {
-      throw new Error('Expected an optional catalog pagination object.');
+      throw new Error('Expected an optional catalog query object.');
     }
     const input = (rawInput ?? {}) as Record<string, unknown>;
-    const allowedKeys = new Set(['model', 'offset', 'limit']);
+    const allowedKeys = new Set(['view', 'model', 'offset', 'limit']);
     const unknownKey = Object.keys(input).find((key) => !allowedKeys.has(key));
     if (unknownKey) throw new Error(`Unknown catalog read field: ${unknownKey}.`);
+    const hasPagination = input.offset !== undefined || input.limit !== undefined;
+    const view = input.view ?? (hasPagination ? 'products' : 'overview');
+    if (view !== 'overview' && view !== 'products') {
+      throw new Error('view must be either "overview" or "products".');
+    }
+    if (input.view === 'overview' && hasPagination) {
+      throw new Error('offset and limit are supported only for the products view.');
+    }
     const requestedModel = input.model;
     if (requestedModel !== undefined && requestedModel !== 'woman' && requestedModel !== 'man') {
       throw new Error('model must be either "woman" or "man" when supplied.');
     }
-    const { offset, limit } = validatePaginationInput(input, WEBMCP_CATALOG_PAGE_LIMIT);
     const requestedAudience = requestedModel === 'woman'
       ? 'Women'
       : requestedModel === 'man' ? 'Men' : undefined;
@@ -1946,15 +2201,44 @@ export default function Home() {
       !requestedAudience || product.audience === requestedAudience
     ));
 
+    if (view === 'overview') {
+      const prices = readyProducts.map((product) => product.price);
+      return {
+        status: 'ready',
+        view,
+        currency: 'CAD',
+        scope: { model: requestedModel ?? 'all' },
+        totalCount: readyProducts.length,
+        facets: {
+          audiences: ['Women', 'Men'].map((audience) => ({
+            audience,
+            count: readyProducts.filter((product) => product.audience === audience).length,
+          })).filter(({ count }) => count > 0),
+          slots: styleSlots.map((slot) => ({
+            slot,
+            count: readyProducts.filter((product) => slotForProduct(product) === slot).length,
+          })).filter(({ count }) => count > 0),
+          priceCad: { minimum: Math.min(...prices), maximum: Math.max(...prices) },
+        },
+        rules: {
+          dress: 'Do not combine a dress with a top or bottom.',
+          audience: 'All pieces must match the selected collection.',
+          budget: 'Capsule budgets count each distinct piece once.',
+          accessories: 'Up to four per look.',
+        },
+        routing: {
+          ordinaryDiscovery: 'Use search_catalog with model, slot, and maximum price filters.',
+          exhaustiveDiscovery: 'Use read_catalog with view products and follow page.nextOffset until null.',
+        },
+      };
+    }
+
+    const { offset, limit } = validatePaginationInput(input, WEBMCP_CATALOG_PAGE_LIMIT);
+
     return {
       status: 'ready',
+      view,
       currency: 'CAD',
-      rules: {
-        dress: 'Do not combine a dress with a top or bottom.',
-        audience: 'All pieces must match the selected collection.',
-        budget: 'Capsule budgets count each distinct piece once.',
-        accessories: 'Up to four per look.',
-      },
       page: pageForWebMcp(readyProducts.map((product) => ({
         id: product.id,
         name: product.name,
@@ -1964,7 +2248,6 @@ export default function Home() {
         color: product.color,
         priceCad: product.price,
       })), offset, limit),
-      nextStep: 'Continue with page.nextOffset, or read atelier state before staging.',
     };
   }, []);
 
@@ -1994,7 +2277,7 @@ export default function Home() {
     const common = {
       status: 'ready',
       view,
-      model,
+      model: styleCollection ? model : null,
       size,
       presentationMode: isCapsuleJourney ? 'capsule' : 'single-look',
     };
@@ -2071,7 +2354,7 @@ export default function Home() {
         name: productById.get(id)?.name ?? `Product ${id}`,
       })), offset, limit),
     };
-  }, [activeJourneyIndex, capsuleConstraints, excludedProductIds, isCapsuleJourney, journey, lockedProductIds, model, ownedProductIds, selections, size]);
+  }, [activeJourneyIndex, capsuleConstraints, excludedProductIds, isCapsuleJourney, journey, lockedProductIds, model, ownedProductIds, selections, size, styleCollection]);
 
   const searchAtelierFromWebMCP = useCallback((rawInput: unknown) => {
     if (!rawInput || typeof rawInput !== 'object' || Array.isArray(rawInput)) {
@@ -2107,7 +2390,7 @@ export default function Home() {
     }
     const { offset, limit } = validatePaginationInput(
       input as Record<string, unknown>,
-      WEBMCP_CATALOG_PAGE_LIMIT,
+      WEBMCP_SEARCH_PAGE_LIMIT,
     );
 
     const requestedAudience = input.model === 'woman'
@@ -2199,7 +2482,7 @@ export default function Home() {
       })),
       previewVisible: true,
       bagChange: 'none',
-      nextStep: 'Use elane_replan_capsule if the brief changes, or elane_add_staged_look_to_bag when the user chooses a look to buy.',
+      nextStep: 'Use replan_capsule if the brief changes, or add_look_to_bag when the user chooses a look to buy.',
       message: result.status === 'composed'
         ? 'The capsule journey and its first garment board are visible in the Style Studio.'
         : result.message ?? 'The capsule journey could not be staged.',
@@ -2304,12 +2587,13 @@ export default function Home() {
     if (unknownKey) throw new Error(`Unknown bag read field: ${unknownKey}.`);
     const { offset, limit } = validatePaginationInput(input, WEBMCP_BAG_PAGE_LIMIT);
     const subtotalCad = bagSummary(cart).subtotalCad;
-    const discountCad = appliedPromotionCode ? promotionSavingsCad(subtotalCad) : 0;
+    const applicationState = promotionApplicationState(subtotalCad, appliedPromotionCode);
+    const discountCad = applicationState === 'applied' ? promotionSavingsCad(subtotalCad) : 0;
     return {
       status: 'ready',
       bag: {
         ...bagSummary(cart),
-        appliedPromotionCode: appliedPromotionCode ?? null,
+        appliedPromotionCode: applicationState === 'applied' ? appliedPromotionCode : null,
         discountCad,
         estimatedTotalCad: subtotalCad - discountCad,
       },
@@ -2324,11 +2608,12 @@ export default function Home() {
     if (rawInput !== undefined && (
       !rawInput || typeof rawInput !== 'object' || Array.isArray(rawInput) || Object.keys(rawInput).length
     )) {
-      throw new Error('elane_read_promotions accepts only an empty object.');
+      throw new Error('read_promotions accepts only an empty object.');
     }
     const subtotalCad = bagSummary(cart).subtotalCad;
     const eligible = subtotalCad >= atelierPromotion.minimumSubtotalCad;
     const estimatedSavingsCad = promotionSavingsCad(subtotalCad);
+    const applicationState = promotionApplicationState(subtotalCad, appliedPromotionCode);
     return {
       status: 'ready',
       currency: atelierPromotion.currency,
@@ -2341,11 +2626,11 @@ export default function Home() {
           amountNeededCad: Math.max(0, atelierPromotion.minimumSubtotalCad - subtotalCad),
           estimatedSavingsCad,
           estimatedTotalCad: subtotalCad - estimatedSavingsCad,
-          applied: appliedPromotionCode === atelierPromotion.code,
+          applied: applicationState === 'applied',
         },
       }],
       nextStep: eligible
-        ? 'Ask the user before calling elane_apply_promotion with the selected code.'
+        ? 'Ask the user before calling apply_promotion with the selected code.'
         : 'The current bag does not yet meet the minimum spend. Do not apply the code until it qualifies.',
     };
   }, [appliedPromotionCode, cart]);
@@ -2395,11 +2680,11 @@ export default function Home() {
 
     const existingItem = cart.find((item) => item.id === product.id);
     if (existingItem && input.size && input.size !== existingItem.size) {
-      throw new Error(`${product.name} is already in the shopping bag in size ${existingItem.size}. Use elane_set_bag_item_size before increasing its quantity.`);
+      throw new Error(`${product.name} is already in the shopping bag in size ${existingItem.size}. Use set_bag_item_size before increasing its quantity.`);
     }
-    const chosenSize = existingItem?.size ?? input.size ?? size;
+    const chosenSize = input.size ?? existingItem?.size ?? size;
     const nextCart = existingItem
-      ? cart.map((item) => item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item)
+      ? cart.map((item) => item.id === product.id ? { ...item, quantity: item.quantity + 1, size: chosenSize } : item)
       : [...cart, { ...product, quantity: 1, size: chosenSize }];
     const nextItem = nextCart.find((item) => item.id === product.id)!;
     setCart(nextCart);
@@ -2419,7 +2704,7 @@ export default function Home() {
       },
       bag: bagSummary(nextCart),
       bagVisible: true,
-      nextStep: 'Use elane_read_shopping_bag to verify the final bag before presenting checkout as an optional demonstration.',
+      nextStep: 'Use read_bag to verify the final bag before presenting checkout as an optional demonstration.',
       message: existingItem
         ? `${product.name} quantity increased to ${nextItem.quantity} in the shopping bag.`
         : `${product.name} was added to the shopping bag in size ${chosenSize}.`,
@@ -2436,6 +2721,7 @@ export default function Home() {
       ? cart.map((item) => item.id === productId ? { ...item, quantity: nextQuantity } : item)
       : cart.filter((item) => item.id !== productId);
     setCart(nextCart);
+    revokePromotionIfIneligible(nextCart);
     setBagOpen(true);
     await nextFrame();
 
@@ -2449,12 +2735,12 @@ export default function Home() {
       productLineRemoved: nextQuantity === 0,
       bag: bagSummary(nextCart),
       bagVisible: true,
-      nextStep: 'Use elane_read_shopping_bag to verify the complete post-action bag.',
+      nextStep: 'Use read_bag to verify the complete post-action bag.',
       message: nextQuantity > 0
         ? `${currentItem.name} quantity is now ${nextQuantity}.`
         : `${currentItem.name} was removed because its quantity reached zero.`,
     };
-  }, [cart]);
+  }, [cart, revokePromotionIfIneligible]);
 
   const setBagItemSizeFromWebMCP = useCallback(async (rawInput: unknown) => {
     const { productId, size: nextSize } = validateSetBagItemSizeInput(rawInput);
@@ -2475,7 +2761,7 @@ export default function Home() {
       quantity: currentItem.quantity,
       bag: bagSummary(nextCart),
       bagVisible: true,
-      nextStep: 'Use elane_read_shopping_bag to verify the complete post-action bag.',
+      nextStep: 'Use read_bag to verify the complete post-action bag.',
       message: currentItem.size === nextSize
         ? `${currentItem.name} was already size ${nextSize}.`
         : `${currentItem.name} size changed from ${currentItem.size} to ${nextSize}.`,
@@ -2488,6 +2774,7 @@ export default function Home() {
     const removedItems = cart.filter((item) => requestedIds.has(item.id));
     const remainingItems = cart.filter((item) => !requestedIds.has(item.id));
     setCart(remainingItems);
+    revokePromotionIfIneligible(remainingItems);
     setBagOpen(true);
     await nextFrame();
 
@@ -2497,17 +2784,18 @@ export default function Home() {
       missingProductIds: productIds.filter((id) => !removedItems.some((item) => item.id === id)),
       bag: bagSummary(remainingItems),
       bagVisible: true,
-      nextStep: 'Use elane_read_shopping_bag to verify the complete post-action bag.',
+      nextStep: 'Use read_bag to verify the complete post-action bag.',
       message: removedItems.length
         ? `${removedItems.length} product line${removedItems.length === 1 ? '' : 's'} were removed from the shopping bag.`
         : 'No matching product lines were in the shopping bag.',
     };
-  }, [cart]);
+  }, [cart, revokePromotionIfIneligible]);
 
   const clearShoppingBagFromWebMCP = useCallback(async (rawInput: unknown) => {
     validateEmptyToolInput(rawInput, 'Clearing the shopping bag');
     const previousBag = bagSummary(cart);
     setCart([]);
+    revokePromotionIfIneligible([]);
     setBagOpen(true);
     await nextFrame();
 
@@ -2522,7 +2810,7 @@ export default function Home() {
         ? 'The shopping bag is now empty.'
         : 'The shopping bag was already empty.',
     };
-  }, [cart]);
+  }, [cart, revokePromotionIfIneligible]);
 
   const addStagedLookFromWebMCP = useCallback(async (rawInput: unknown) => {
     if (rawInput !== undefined && (
@@ -2625,7 +2913,8 @@ export default function Home() {
     const { productId } = validateStagedItemMutationInput(rawInput, false) as AddStagedItemInput;
     const product = productById.get(productId);
     if (!product) throw new Error(`Product ${productId} is not in the ÉLANE catalog.`);
-    const expectedAudience = model === 'woman' ? 'Women' : 'Men';
+    const nextModel: ModelId = styleCollection ?? (product.audience === 'Women' ? 'woman' : 'man');
+    const expectedAudience = nextModel === 'woman' ? 'Women' : 'Men';
     if (product.audience !== expectedAudience) {
       throw new Error(`${product.name} is a ${product.audience.toLowerCase()} product and cannot be added to the active ${expectedAudience.toLowerCase()} collection.`);
     }
@@ -2642,7 +2931,7 @@ export default function Home() {
         throw new Error('The staged look already has four accessories. Remove or replace one before adding another.');
       }
     } else if (slotHasSelection(selections, slot)) {
-      throw new Error(`The staged look already has a ${slot.toLowerCase()}. Use elane_replace_staged_item to change it.`);
+      throw new Error(`The staged look already has a ${slot.toLowerCase()}. Use replace_look_item to change it.`);
     }
     if (slot === 'Dress' && (slotHasSelection(selections, 'Top') || slotHasSelection(selections, 'Bottom'))) {
       throw new Error('Remove the staged top and bottom before adding a dress.');
@@ -2651,17 +2940,19 @@ export default function Home() {
       throw new Error(`Remove the staged dress before adding a ${slot.toLowerCase()}.`);
     }
 
-    const nextSelections = addProductToSelections(selections, product);
+    const nextSelections = addProductToSelections(styleCollection ? selections : {}, product);
+    setStyleCollection(nextModel);
+    setModel(nextModel);
     setSelections(nextSelections);
-    if (isCapsuleJourney) updateActiveJourneySelections(model, nextSelections);
+    if (isCapsuleJourney) updateActiveJourneySelections(nextModel, nextSelections);
     setActiveStyleSlot(slot);
     setManualEditorOpen(true);
-    const result = await composeLook(model, nextSelections);
+    const result = await composeLook(nextModel, nextSelections);
     await focusAtelier();
 
     return {
       status: 'added',
-      model,
+      model: nextModel,
       presentationMode: isCapsuleJourney ? 'capsule' : 'single-look',
       activeJourneyLook: isCapsuleJourney ? activeJourneyIndex : null,
       addedItem: {
@@ -2676,7 +2967,7 @@ export default function Home() {
       bagChange: 'none',
       message: `${product.name} was added to the visible staged look. The shopping bag was not changed.`,
     };
-  }, [activeJourneyIndex, composeLook, excludedProductIds, focusAtelier, isCapsuleJourney, model, selections, updateActiveJourneySelections]);
+  }, [activeJourneyIndex, composeLook, excludedProductIds, focusAtelier, isCapsuleJourney, selections, styleCollection, updateActiveJourneySelections]);
 
   const removeStagedItemFromWebMCP = useCallback(async (rawInput: unknown) => {
     const { productId } = validateStagedItemMutationInput(rawInput, false);
@@ -2794,7 +3085,9 @@ export default function Home() {
     }
     setExcludedProductIds((current) => current.filter((id) => id !== product.id));
     const nextSelections = cloneSelections(
-      nextModel === model ? selections : defaultSelectionsByModel[nextModel],
+      styleCollection === null
+        ? {}
+        : nextModel === model ? selections : defaultSelectionsByModel[nextModel],
     );
     if (slot === 'Accessory') {
       const currentAccessories = nextSelections.Accessory ?? [];
@@ -2811,6 +3104,7 @@ export default function Home() {
     } else if (slot === 'Top' || slot === 'Bottom') {
       delete nextSelections.Dress;
     }
+    setStyleCollection(nextModel);
     setModel(nextModel);
     setSelections(nextSelections);
     if (nextModel !== model) setActiveJourneyIndex(0);
@@ -2834,6 +3128,7 @@ export default function Home() {
     setExcludedProductIds([]);
     setLockedProductIds([]);
     setCapsuleRevision(null);
+    setStyleCollection(nextModel);
     setModel(nextModel);
     setSelections(defaults);
     setActiveStyleSlot('Top');
@@ -2907,6 +3202,10 @@ export default function Home() {
   };
 
   const createCapsule = () => {
+    if (!styleCollection) {
+      setManualEditorOpen(true);
+      return;
+    }
     const nextJourney = cloneJourney(curatedJourneys[model]);
     const firstLook = nextJourney.looks[0];
     const pieces = selectedProducts(firstLook.selections);
@@ -2939,15 +3238,20 @@ export default function Home() {
     if (productsToBuy.length) setBagOpen(true);
   };
 
-  const quantity = (id: number, delta: number) => setCart((current) => current.flatMap((item) => {
-    if (item.id !== id) return [item];
-    const next = item.quantity + delta;
-    return next > 0 ? [{ ...item, quantity: next }] : [];
-  }));
+  const quantity = (id: number, delta: number) => {
+    const nextCart = cart.flatMap((item) => {
+      if (item.id !== id) return [item];
+      const next = item.quantity + delta;
+      return next > 0 ? [{ ...item, quantity: next }] : [];
+    });
+    setCart(nextCart);
+    revokePromotionIfIneligible(nextCart);
+  };
 
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
   const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const promotionDiscount = appliedPromotionCode ? promotionSavingsCad(total) : 0;
+  const promotionState = promotionApplicationState(total, appliedPromotionCode);
+  const promotionDiscount = promotionState === 'applied' ? promotionSavingsCad(total) : 0;
   const lookProducts = selectedProducts(selections);
   const lookTotal = lookProducts.reduce((sum, product) => sum + product.price, 0);
   const ownedProductIdSet = useMemo(() => new Set(ownedProductIds), [ownedProductIds]);
@@ -2976,7 +3280,7 @@ export default function Home() {
   );
   const excludedProductIdSet = useMemo(() => new Set(excludedProductIds), [excludedProductIds]);
   const lockedProductIdSet = useMemo(() => new Set(lockedProductIds), [lockedProductIds]);
-  const activeAudience = model === 'woman' ? 'Women' : 'Men';
+  const activeAudience = styleCollection ? (model === 'woman' ? 'Women' : 'Men') : null;
   const readyLayerCount = products.filter((product) => product.audience === activeAudience).length;
   const availableStyleSlots = styleSlots.filter((slot) => products.some((product) => (
     product.audience === activeAudience && slotForProduct(product) === slot
@@ -3012,8 +3316,8 @@ export default function Home() {
   };
 
   return (
-    <main>
-      <AtelierWebMCP
+    <main className={activeProduct ? 'product-route' : undefined}>
+      {!activeProduct ? <AtelierWebMCP
         addCatalogItemToBag={addCatalogItemToBagFromWebMCP}
         addStagedItem={addStagedItemFromWebMCP}
         addStagedLook={addStagedLookFromWebMCP}
@@ -3022,7 +3326,9 @@ export default function Home() {
         applyPromotion={applyPromotionFromWebMCP}
         read={readAtelierFromWebMCP}
         readBag={readShoppingBagFromWebMCP}
+        readPolicy={readPolicyFromWebMcp}
         readPromotions={readPromotionsFromWebMCP}
+        checkReturnWindow={checkReturnWindowFromWebMcp}
         readState={readAtelierStateFromWebMCP}
         removeBagItems={removeBagItemsFromWebMCP}
         removeStagedItem={removeStagedItemFromWebMCP}
@@ -3033,10 +3339,10 @@ export default function Home() {
         setBagItemSize={setBagItemSizeFromWebMCP}
         stage={composeFromWebMCP}
         stageJourney={stageJourneyFromWebMCP}
-      />
+      /> : null}
       <div className="announcement">Complimentary shipping and returns on all orders.</div>
       <header className="site-header">
-        <a className="wordmark" href="#top" aria-label="ÉLANE home">ÉLANE</a>
+        <a className="wordmark" href="/" aria-label="ÉLANE home">ÉLANE</a>
         <button
           className="menu-button"
           type="button"
@@ -3045,14 +3351,17 @@ export default function Home() {
           onClick={() => setMobileNavOpen((open) => !open)}
         >{mobileNavOpen ? 'Close' : 'Menu'}</button>
         <nav id="primary-navigation" className={mobileNavOpen ? 'open' : ''} aria-label="Primary navigation">
-          <a href="#collection" onClick={() => { selectAudience('All'); setMobileNavOpen(false); }}>New arrivals</a>
-          <a href="#collection" onClick={() => { selectAudience('Women'); setMobileNavOpen(false); }}>Women</a>
-          <a href="#collection" onClick={() => { selectAudience('Men'); setMobileNavOpen(false); }}>Men</a>
-          <a className="accent-link" href="#atelier" onClick={navigateToAtelier}>Style Studio</a>
+          <a href={collectionHref()} onClick={() => { selectAudience('All'); setMobileNavOpen(false); }}>New arrivals</a>
+          <a href={collectionHref('Women')} onClick={() => { selectAudience('Women'); setMobileNavOpen(false); }}>Women</a>
+          <a href={collectionHref('Men')} onClick={() => { selectAudience('Men'); setMobileNavOpen(false); }}>Men</a>
+          <a className="accent-link" href="/#atelier" onClick={navigateToAtelier}>Style Studio</a>
         </nav>
         <button className="bag-button" type="button" onClick={() => setBagOpen(true)}>Bag <span>{cartCount}</span></button>
       </header>
 
+      {activeProduct ? (
+        <ProductDetail product={activeProduct} relatedProducts={relatedProducts} initialSize={size} onAdd={addProduct} />
+      ) : <>
       <section className="hero" id="top">
         <div className="hero-copy">
           <h1>Dress for a<br />life in motion.</h1>
@@ -3107,7 +3416,10 @@ export default function Home() {
             <button type="button" onClick={() => { setSearch(''); setAudience('All'); setCategory('All'); }}>Clear filters</button>
           ) : null}
         </div>
-        <div className="product-grid">
+        <div
+          className={`product-grid ${catalogIsUpdating ? 'is-updating' : ''}`}
+          aria-busy={catalogIsUpdating}
+        >
           {displayedProducts.map((product) => (
             <ProductCard
               key={product.id}
@@ -3128,13 +3440,13 @@ export default function Home() {
 
       <section className="atelier" id="atelier">
         <div className="atelier-intro">
-          <h2>{isCapsuleJourney ? 'Lock what you love. Replan the rest.' : 'Your look. Made personal.'}</h2>
+          <h2>{isCapsuleJourney ? 'Advanced planning for every occasion.' : 'Your look. Made personal.'}</h2>
           <p>{isCapsuleJourney
             ? 'Plan several occasions together, mark what you already own, and keep favourite pieces fixed while the rest of the capsule adapts.'
-            : 'Choose your pieces, set your size, and add one considered look. Create a capsule only when you need more than one occasion.'}</p>
+            : 'Choose your pieces, set your size, and add one considered look. Multi-occasion planning is available only when you need it.'}</p>
           <div className="atelier-connection">
             <button className="reset-look" type="button" onClick={isCapsuleJourney ? returnToSingleLook : createCapsule}>
-              {isCapsuleJourney ? 'Return to one look' : 'Create a capsule'}
+              {isCapsuleJourney ? 'Return to one look' : styleCollection ? 'Plan multiple occasions' : 'Choose a collection'}
             </button>
           </div>
         </div>
@@ -3160,7 +3472,7 @@ export default function Home() {
                 <h3>{isCapsuleJourney ? journey.title : 'Your look'}</h3>
                 <p aria-live="polite">{currentGarmentsBrief}</p>
               </div>
-              <span>{activeAudience} collection</span>
+              <span>{activeAudience ? `${activeAudience} collection` : 'Choose a collection'}</span>
             </div>
 
             {isCapsuleJourney ? (
@@ -3349,7 +3661,7 @@ export default function Home() {
                 <div className="profile-switch" aria-label="Choose a collection">
                   <span>Collection</span>
                   {(Object.keys(defaultSelectionsByModel) as ModelId[]).map((id) => (
-                    <button className={model === id ? 'selected' : ''} type="button" key={id} aria-pressed={model === id} onClick={() => selectModel(id)}>
+                    <button className={styleCollection === id ? 'selected' : ''} type="button" key={id} aria-pressed={styleCollection === id} onClick={() => selectModel(id)}>
                       {id === 'woman' ? 'Women' : 'Men'}
                     </button>
                   ))}
@@ -3395,7 +3707,11 @@ export default function Home() {
                       </button>
                       : <span>{activeStyleSlot === 'Accessory' ? 'Add accessories' : 'Select a garment'}</span>}
                   </div>
-                  <div className="style-option-groups" aria-label={`Choose a ${activeStyleSlot.toLowerCase()} product for the garment board`}>
+                  <div
+                    className={`style-option-groups ${atelierSearch !== deferredAtelierSearch ? 'is-updating' : ''}`}
+                    aria-busy={atelierSearch !== deferredAtelierSearch}
+                    aria-label={`Choose a ${activeStyleSlot.toLowerCase()} product for the garment board`}
+                  >
                     <div className="style-product-picker">
                       {activeStyleProducts.map((product) => {
                         const isSelected = selectionIncludes(selections, product);
@@ -3443,7 +3759,7 @@ export default function Home() {
                 : 'Build one look at a time. Create a capsule only when you need coordinated options for more than one occasion.'} {sessionReady ? 'Session saved on this device.' : 'Restoring your saved session…'}</p>
               <p>{previewStatus === 'ready'
                 ? `${lookProducts.length} ${lookProducts.length === 1 ? 'piece' : 'pieces'} · Size ${size} · Board ready`
-                : `${readyLayerCount} garments ready`}</p>
+                : styleCollection ? `${readyLayerCount} garments ready` : 'Choose a collection to begin'}</p>
             </div>
           </div>
         </div>
@@ -3453,22 +3769,25 @@ export default function Home() {
         <div><h2>Made to move with you.</h2><p>Complimentary delivery and returns. Checkout preview. Thoughtful customer care.</p></div>
         <a href="#atelier" onClick={navigateToAtelier}>Visit the Style Studio</a>
       </section>
+      </>}
 
       <footer>
-        <div><a className="wordmark" href="#top">ÉLANE</a><p>Modern wardrobe. Timeless expression.</p><small>© 2026 ÉLANE. All rights reserved.</small></div>
-        <div><strong>Shop</strong><a href="#collection" onClick={() => selectAudience('All')}>New arrivals</a><a href="#collection" onClick={() => selectAudience('Women')}>Women</a><a href="#collection" onClick={() => selectAudience('Men')}>Men</a><a href="#atelier" onClick={navigateToAtelier}>Style Studio</a></div>
-        <div><strong>Client care</strong><span>Delivery & returns</span><span>Size guide</span><span>Contact</span></div>
-        <div><strong>About</strong><p>A considered wardrobe for modern life.</p></div>
+        <div><a className="wordmark" href="/">ÉLANE</a><p>Modern wardrobe. Timeless expression.</p><small>© 2026 ÉLANE. All rights reserved.</small></div>
+        <div><strong>Shop</strong><a href={collectionHref()} onClick={() => selectAudience('All')}>New arrivals</a><a href={collectionHref('Women')} onClick={() => selectAudience('Women')}>Women</a><a href={collectionHref('Men')} onClick={() => selectAudience('Men')}>Men</a><a href="/#atelier" onClick={navigateToAtelier}>Style Studio</a></div>
+        <div><strong>Client care</strong><a href="/returns">Delivery &amp; returns</a><span>Size guide</span><span>Contact</span></div>
+        <div><strong>About</strong><p>A considered wardrobe for modern life.</p><a href="/terms">Terms &amp; conditions</a></div>
       </footer>
 
       <button
-        className={`promotion-sticky ${appliedPromotionCode ? 'applied' : ''}`}
+        className={`promotion-sticky ${promotionState === 'applied' ? 'applied' : ''}`}
         type="button"
         aria-haspopup="dialog"
         onClick={() => setPromotionOpen(true)}
       >
         <span>Private offer</span>
-        <strong>{appliedPromotionCode ? `${atelierPromotion.discountPercent}% applied` : 'Reveal offer'}</strong>
+        <strong>{promotionState === 'applied'
+          ? `${atelierPromotion.discountPercent}% applied`
+          : 'Click to reveal offer'}</strong>
       </button>
       <PromotionOffer
         open={promotionOpen}
@@ -3476,8 +3795,12 @@ export default function Home() {
         onClose={() => setPromotionOpen(false)}
         onOpenBag={() => { setPromotionOpen(false); setBagOpen(true); }}
       />
-      <BagDrawer items={cart} open={bagOpen} appliedPromotionCode={appliedPromotionCode} onClose={() => setBagOpen(false)} onQuantity={quantity} onCheckout={() => { setBagOpen(false); setCheckoutOpen(true); }} />
+      <BagDrawer items={cart} open={bagOpen} appliedPromotionCode={promotionState === 'applied' ? appliedPromotionCode : undefined} onClose={() => setBagOpen(false)} onQuantity={quantity} onCheckout={() => { setBagOpen(false); setCheckoutOpen(true); }} />
       <Checkout open={checkoutOpen} subtotal={total} discount={promotionDiscount} onClose={() => setCheckoutOpen(false)} onApplyPromotion={applyPromotionFromCheckout} />
     </main>
   );
+}
+
+export default function Home() {
+  return <Boutique />;
 }
