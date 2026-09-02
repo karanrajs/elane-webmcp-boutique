@@ -79,9 +79,7 @@ After staging a look, the shopper can ask any compatible image-generating agent 
 
 ### What was verified
 
-The verified storefront registers 22 tools directly from the website: eight read tools and fourteen write tools. The final 2:44 demo was recorded in ChatGPT desktop’s WebMCP-capable in-app browser and visibly demonstrates shared state, `read_look_render_kit`, the personal concept preview, explicit bag mutation, promotion application, and the complete tool inventory. Contract checks cover structured catalog search, state and asset reads, staging boundaries, shopping-bag actions, promotions, policy reads, output budgets, and one generated preview asset for every catalog product.
-
-The demo ends before checkout. No payment is collected and no order is placed.
+The verified storefront registers 22 tools directly from the website: eight read tools and fourteen write tools. Used ChatGPT desktop’s WebMCP-capable in-app browser and visibly demonstrates shared state, `read_look_render_kit`, the personal concept preview, explicit bag mutation, promotion application, and the complete tool inventory. Contract checks cover structured catalog search, state and asset reads, staging boundaries, shopping-bag actions, promotions, policy reads, output budgets, and one generated preview asset for every catalog product.
 
 ### How WebMCP is implemented
 
