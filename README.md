@@ -22,16 +22,61 @@ Open the local URL printed by Vinext. No environment variables or external servi
 
 ### Verification Steps
 
-- **Hosted app:** open the [live application](https://elane-clothing-boutique.karanrajs.chatgpt.site) in ChatGPT desktop’s in-app browser. No login or credentials are required.
-- **WebMCP flow:**
-  Step 1: Use the below promt to build a look in the style studio
-          “Can you help me find one polished smart-casual outfit for OpenAI DevDay 2026 in San Francisco, within a budget of CAD 1,500, and stage it in the Style Studio?”
-  Step 2: Create a personal concept preview using the below prompt
-          “On the ÉLANE Style Studio page I already have open, create a complete preview of my currently staged outfit on me. If I have not already attached a clear full-body photo in this conversation, ask me to attach one first. Generate the                  finished image here. Treat it as a visual concept, not proof of fit or sizing.”
-  Step 3: Add the outfits into the shopping bag and check for promotional offer, use the below prompt.
-          “Add outfit to my shopping bag and check and apply if there is an eligible promotional offer.”
-  
-- **Repository validation:** after `npm ci`, run `npm run check` to execute type checking, linting, WebMCP contract verification, asset verification, and a production build.
+#### 1. Open the hosted app
+
+Open the [live ÉLANE application](https://elane-clothing-boutique.karanrajs.chatgpt.site) in ChatGPT desktop’s in-app browser.
+
+Keep the application open while completing all three steps below. No login, credentials, environment variables, or external services are required.
+
+#### 2. Stage an outfit
+
+Send this prompt:
+
+> Can you help me find one polished smart-casual outfit for OpenAI DevDay 2026 in San Francisco, within a budget of CAD 1,500, and stage it in the Style Studio?
+
+**Expected result:**
+
+- A complete outfit appears in the visible Style Studio.
+- The selected outfit stays within the CAD 1,500 budget.
+- The shopping bag remains empty because staging does not add products to the bag.
+
+#### 3. Create a personal concept preview
+
+Send this prompt:
+
+> On the ÉLANE Style Studio page I already have open, create a complete preview of my currently staged outfit on me. If I have not already attached a clear full-body photo in this conversation, ask me to attach one first. Generate the finished image here. Treat it as a visual concept, not proof of fit or sizing.
+
+**Expected result:**
+
+- The agent reads the exact garments currently staged in ÉLANE.
+- The concept image appears in the ChatGPT conversation.
+- The customer photo is not sent to the ÉLANE website.
+- The preview is presented as a visual concept, not evidence of fit or sizing.
+- The shopping bag remains unchanged.
+
+#### 4. Add the outfit and apply an eligible promotion
+
+Send this prompt:
+
+> Add outfit to my shopping bag and check and apply if there is an eligible promotional offer.
+
+**Expected result:**
+
+- The staged outfit is added to the visible shopping bag.
+- The agent checks the current bag against the promotion rules.
+- An eligible promotion is applied and the displayed totals update.
+- Checkout is not started, and no payment or order is placed.
+
+#### 5. Verify the repository
+
+For local source verification, run:
+
+```bash
+npm ci
+npm run check
+```
+
+A successful check verifies TypeScript, linting, WebMCP contracts, output limits, preview assets, and the production build.
 
 ## Example sequence
 
