@@ -26,7 +26,7 @@ Open the local URL printed by Vinext. No environment variables or external servi
 
 Open the [live ÉLANE application](https://elane-clothing-boutique.karanrajs.chatgpt.site) in ChatGPT desktop’s in-app browser.
 
-Keep the application open while completing all three steps below. No login, credentials, environment variables, or external services are required.
+Keep the application open while completing steps 2 - 4. No login, credentials, environment variables, or external services are required.
 
 #### 2. Stage an outfit
 
